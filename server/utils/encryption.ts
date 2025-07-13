@@ -1,8 +1,12 @@
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'your-32-character-ultra-secure-key';
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'fallback-32-character-key-change-me';
 const IV_LENGTH = 16;
+
+if (!process.env.ENCRYPTION_KEY) {
+  console.warn('ENCRYPTION_KEY not set in environment variables. Using fallback key.');
+}
 
 // Derive a proper 32-byte key from the passphrase
 const getKey = (): Buffer => {

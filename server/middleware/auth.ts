@@ -2,7 +2,11 @@ import jwt from 'jsonwebtoken';
 import { Response, NextFunction } from 'express';
 import { AuthRequest } from '../types';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-jwt-secret-key';
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback-jwt-secret-change-in-production';
+
+if (!process.env.JWT_SECRET) {
+  console.warn('JWT_SECRET not set in environment variables. Using fallback secret.');
+}
 
 export const authenticateToken = (req: AuthRequest, res: Response, next: NextFunction) => {
   const authHeader = req.headers['authorization'];

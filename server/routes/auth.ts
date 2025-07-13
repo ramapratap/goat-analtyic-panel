@@ -6,7 +6,11 @@ import { authenticateToken } from '../middleware/auth';
 import { AuthRequest } from '../types';
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'your-jwt-secret-key';
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback-jwt-secret-change-in-production';
+
+if (!process.env.JWT_SECRET) {
+  console.warn('JWT_SECRET not set in environment variables. Using fallback secret.');
+}
 
 router.post('/login', (req, res) => {
   const { email, password } = req.body;

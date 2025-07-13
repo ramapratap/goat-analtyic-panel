@@ -1,8 +1,12 @@
 import { MongoClient, Db } from 'mongodb';
 
-// Database connections
-const OLD_DB_URI = 'mongodb+srv://team:Subral123@cluster0.4gfr7tb.mongodb.net/?retryWrites=true&w=majority&tls=true&tlsAllowInvalidCertificates=true';
-const NEW_DB_URI = 'mongodb+srv://goatdb:goatdb@cluster1.by7y1c.mongodb.net/?retryWrites=true&w=majority&appName=Cluster1&tls=true&tlsAllowInvalidCertificates=true';
+// Use environment variables for database connections
+const OLD_DB_URI = process.env.OLD_DB_URI || '';
+const NEW_DB_URI = process.env.NEW_DB_URI || '';
+
+if (!OLD_DB_URI || !NEW_DB_URI) {
+  console.error('Database URIs not configured. Please set OLD_DB_URI and NEW_DB_URI environment variables.');
+}
 
 let oldDbClient: MongoClient;
 let newDbClient: MongoClient;
@@ -11,6 +15,10 @@ let newDb: Db;
 
 export const connectDatabases = async () => {
   try {
+    if (!OLD_DB_URI || !NEW_DB_URI) {
+      throw new Error('Database URIs not configured');
+    }
+
     // Connect to old database
     oldDbClient = new MongoClient(OLD_DB_URI);
     await oldDbClient.connect();
