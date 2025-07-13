@@ -1,4 +1,6 @@
 import { MongoClient, Db } from 'mongodb';
+import dotenv from 'dotenv';
+dotenv.config();
 
 // Use environment variables for database connections
 const OLD_DB_URI = process.env.OLD_DB_URI || '';
