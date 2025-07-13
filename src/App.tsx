@@ -28,8 +28,18 @@ const Dashboard: React.FC = () => {
     },
   });
 
-  const { stats, userFlows, productAnalytics, couponAnalytics, loading, error, exportData } = useAnalytics(filters);
-  const { productFeedback, heroDeals } = useAnalytics(filters);
+  const { 
+    stats, 
+    userFlows, 
+    productAnalytics, 
+    couponAnalytics, 
+    productFeedback, 
+    heroDeals,
+    loadingStates,
+    isStatsLoaded,
+    error, 
+    exportData 
+  } = useAnalytics(filters);
 
   const handleRefreshQrScans = async () => {
     try {
@@ -48,15 +58,8 @@ const Dashboard: React.FC = () => {
   };
 
   const renderContent = () => {
-    if (loading) {
-      return (
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-        </div>
-      );
-    }
-
-    if (error) {
+    // Show error state only for critical errors
+    if (error && activeTab === 'dashboard' && !isStatsLoaded) {
       return (
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
@@ -74,17 +77,72 @@ const Dashboard: React.FC = () => {
 
     switch (activeTab) {
       case 'dashboard':
-        return stats ? <DashboardOverview stats={stats} onRefreshQrScans={handleRefreshQrScans} /> : null;
+        return <DashboardOverview stats={stats} onRefreshQrScans={handleRefreshQrScans} />;
       case 'products':
-        return <ProductAnalytics productAnalytics={productAnalytics} onExport={exportData} />;
+        return (
+          <div>
+            {loadingStates.productAnalytics && productAnalytics.length === 0 ? (
+              <div className="p-6 flex items-center justify-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <span className="ml-3 text-gray-600">Loading product analytics...</span>
+              </div>
+            ) : (
+              <ProductAnalytics productAnalytics={productAnalytics} onExport={exportData} />
+            )}
+          </div>
+        );
       case 'product-feedback':
-        return <ProductFeedback onExport={exportData} />;
+        return (
+          <div>
+            {loadingStates.productFeedback ? (
+              <div className="p-6 flex items-center justify-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <span className="ml-3 text-gray-600">Loading product feedback...</span>
+              </div>
+            ) : (
+              <ProductFeedback onExport={exportData} />
+            )}
+          </div>
+        );
       case 'coupons':
-        return <CouponAnalytics couponAnalytics={couponAnalytics} onExport={exportData} />;
+        return (
+          <div>
+            {loadingStates.couponAnalytics && couponAnalytics.length === 0 ? (
+              <div className="p-6 flex items-center justify-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <span className="ml-3 text-gray-600">Loading coupon analytics...</span>
+              </div>
+            ) : (
+              <CouponAnalytics couponAnalytics={couponAnalytics} onExport={exportData} />
+            )}
+          </div>
+        );
       case 'hero-deals':
-        return <HeroDeals onExport={exportData} />;
+        return (
+          <div>
+            {loadingStates.heroDeals ? (
+              <div className="p-6 flex items-center justify-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <span className="ml-3 text-gray-600">Loading hero deals...</span>
+              </div>
+            ) : (
+              <HeroDeals onExport={exportData} />
+            )}
+          </div>
+        );
       case 'user-flows':
-        return <UserFlowAnalytics userFlows={userFlows} onExport={exportData} />;
+        return (
+          <div>
+            {loadingStates.userFlows && userFlows.length === 0 ? (
+              <div className="p-6 flex items-center justify-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <span className="ml-3 text-gray-600">Loading user flows...</span>
+              </div>
+            ) : (
+              <UserFlowAnalytics userFlows={userFlows} onExport={exportData} />
+            )}
+          </div>
+        );
       case 'users':
         return user?.role === 'admin' ? <UserManagement /> : null;
       default:
@@ -124,7 +182,10 @@ const AppContent: React.FC = () => {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading application...</p>
+        </div>
       </div>
     );
   }

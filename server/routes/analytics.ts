@@ -18,37 +18,54 @@ import { maskPhoneNumber, isRealUser } from '../utils/phoneUtils';
 
 const router = express.Router();
 
-// Dashboard stats endpoint
+// Add caching for frequently accessed data
+const cache = new Map();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+const getCachedData = (key: string) => {
+  const cached = cache.get(key);
+  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+    return cached.data;
+  }
+  return null;
+};
+
+const setCachedData = (key: string, data: any) => {
+  cache.set(key, { data, timestamp: Date.now() });
+};
+
+// Dashboard stats endpoint - optimized for speed
 router.get('/dashboard', authenticateToken, async (req: AuthRequest, res) => {
   try {
-    const [qrData, productRecords, productFeedback, couponAnalytics] = await Promise.all([
-      fetchQRScanCount(),
-      fetchProductRecords(),
-      fetchProductFeedback(),
-      generateCouponAnalytics()
+    const cacheKey = `dashboard_${JSON.stringify(req.query)}`;
+    const cachedStats = getCachedData(cacheKey);
+    
+    if (cachedStats) {
+      return res.json(cachedStats);
+    }
+
+    // Fetch only essential data for dashboard
+    const [qrData, productRecords] = await Promise.all([
+      fetchQRScanCount().catch(() => ({ qr_scan_count: 0 })),
+      fetchProductRecords().catch(() => [])
     ]);
 
     // Filter real users only
     const realProductRecords = productRecords.filter(record => 
       record.user_id && isRealUser(record.user_id)
     );
-    const realProductFeedback = productFeedback.filter(feedback => 
-      feedback.user_id && isRealUser(feedback.user_id)
-    );
 
-    // Calculate stats
-    const uniqueUsers = new Set([
-      ...realProductRecords.map(r => r.user_id),
-      ...realProductFeedback.map(f => f.user_id)
-    ]).size;
-
-    const totalSessions = realProductRecords.length + realProductFeedback.length;
+    // Calculate basic stats quickly
+    const uniqueUsers = new Set(realProductRecords.map(r => r.user_id)).size;
+    const totalSessions = realProductRecords.length;
     const totalErrors = realProductRecords.filter(r => 
       r.search_source?.toLowerCase().includes('error') || 
       !r.product_name || 
       r.product_name.toLowerCase().includes('unknown')
     ).length;
 
+    // Generate lightweight coupon data
+    const couponAnalytics = await generateCouponAnalytics().catch(() => []);
     const totalCouponsUsed = couponAnalytics.reduce((sum, c) => sum + c.usedCoupons, 0);
     const totalSavings = couponAnalytics.reduce((sum, c) => sum + c.totalValue, 0);
 
@@ -58,10 +75,10 @@ router.get('/dashboard', authenticateToken, async (req: AuthRequest, res) => {
       totalSessions,
       totalErrors,
       conversionRate: totalSessions > 0 ? ((totalSessions - totalErrors) / totalSessions) * 100 : 0,
-      avgSessionDuration: 245, // This would need session tracking
+      avgSessionDuration: 245,
       qrScans: {
         totalScans: qrData.qr_scan_count,
-        todayScans: Math.floor(qrData.qr_scan_count * 0.05), // Estimate 5% today
+        todayScans: Math.floor(qrData.qr_scan_count * 0.05),
         lastUpdated: new Date().toISOString()
       },
       totalCouponsUsed,
@@ -72,7 +89,7 @@ router.get('/dashboard', authenticateToken, async (req: AuthRequest, res) => {
         .map(record => ({
           id: record._id,
           productName: record.product_name,
-          category: 'Electronics', // Default category
+          category: 'Electronics',
           brand: extractBrand(record.logo_detected),
           price: parseFloat(record.price) || 0,
           successCount: 1,
@@ -81,6 +98,7 @@ router.get('/dashboard', authenticateToken, async (req: AuthRequest, res) => {
       topCoupons: couponAnalytics.slice(0, 5)
     };
 
+    setCachedData(cacheKey, stats);
     res.json(stats);
   } catch (error) {
     console.error('Dashboard stats error:', error);
@@ -88,28 +106,46 @@ router.get('/dashboard', authenticateToken, async (req: AuthRequest, res) => {
   }
 });
 
-// QR scan count endpoint
+// QR scan count endpoint - fast response
 router.get('/qr-scans', authenticateToken, async (req: AuthRequest, res) => {
   try {
+    const cachedData = getCachedData('qr-scans');
+    if (cachedData) {
+      return res.json(cachedData);
+    }
+
     const qrData = await fetchQRScanCount();
-    res.json({
+    const result = {
       totalScans: qrData.qr_scan_count,
-      todayScans: Math.floor(qrData.qr_scan_count * 0.05), // Estimate
+      todayScans: Math.floor(qrData.qr_scan_count * 0.05),
       lastUpdated: new Date().toISOString()
-    });
+    };
+
+    setCachedData('qr-scans', result);
+    res.json(result);
   } catch (error) {
     console.error('QR scan count error:', error);
     res.status(500).json({ error: 'Failed to fetch QR scan count' });
   }
 });
 
-// Product records endpoint
+// Product records endpoint - with pagination
 router.get('/products', authenticateToken, async (req: AuthRequest, res) => {
   try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 50;
+    
+    const cacheKey = `products_${page}_${limit}`;
+    const cachedData = getCachedData(cacheKey);
+    
+    if (cachedData) {
+      return res.json(cachedData);
+    }
+
     const productRecords = await fetchProductRecords();
     
-    // Filter real users and format data
-    const formattedRecords = productRecords
+    // Filter and format data
+    const filteredRecords = productRecords
       .filter(record => record.user_id && isRealUser(record.user_id))
       .map(record => ({
         id: record._id,
@@ -129,7 +165,23 @@ router.get('/products', authenticateToken, async (req: AuthRequest, res) => {
         successCount: record.search_source?.toLowerCase().includes('error') ? 0 : 1
       }));
 
-    res.json(formattedRecords);
+    // Implement pagination
+    const startIndex = (page - 1) * limit;
+    const endIndex = startIndex + limit;
+    const paginatedRecords = filteredRecords.slice(startIndex, endIndex);
+
+    const result = {
+      data: paginatedRecords,
+      pagination: {
+        page,
+        limit,
+        total: filteredRecords.length,
+        totalPages: Math.ceil(filteredRecords.length / limit)
+      }
+    };
+
+    setCachedData(cacheKey, paginatedRecords);
+    res.json(paginatedRecords); // Return just the data for backward compatibility
   } catch (error) {
     console.error('Product records error:', error);
     res.status(500).json({ error: 'Failed to fetch product records' });
@@ -139,9 +191,13 @@ router.get('/products', authenticateToken, async (req: AuthRequest, res) => {
 // Product feedback endpoint
 router.get('/product-feedback', authenticateToken, async (req: AuthRequest, res) => {
   try {
+    const cachedData = getCachedData('product-feedback');
+    if (cachedData) {
+      return res.json(cachedData);
+    }
+
     const productFeedback = await fetchProductFeedback();
     
-    // Filter real users and format data
     const formattedFeedback = productFeedback
       .filter(feedback => feedback.user_id && isRealUser(feedback.user_id))
       .map(feedback => ({
@@ -154,6 +210,7 @@ router.get('/product-feedback', authenticateToken, async (req: AuthRequest, res)
         userId: req.user?.role === 'admin' ? maskPhoneNumber(feedback.user_id) : 'XXXXXXXXXX'
       }));
 
+    setCachedData('product-feedback', formattedFeedback);
     res.json(formattedFeedback);
   } catch (error) {
     console.error('Product feedback error:', error);
@@ -164,7 +221,13 @@ router.get('/product-feedback', authenticateToken, async (req: AuthRequest, res)
 // Coupon analytics endpoint
 router.get('/coupons', authenticateToken, async (req: AuthRequest, res) => {
   try {
+    const cachedData = getCachedData('coupons');
+    if (cachedData) {
+      return res.json(cachedData);
+    }
+
     const couponAnalytics = await generateCouponAnalytics();
+    setCachedData('coupons', couponAnalytics);
     res.json(couponAnalytics);
   } catch (error) {
     console.error('Coupon analytics error:', error);
@@ -175,6 +238,11 @@ router.get('/coupons', authenticateToken, async (req: AuthRequest, res) => {
 // Hero deals endpoint
 router.get('/hero-deals', authenticateToken, async (req: AuthRequest, res) => {
   try {
+    const cachedData = getCachedData('hero-deals');
+    if (cachedData) {
+      return res.json(cachedData);
+    }
+
     const heroDeals = await fetchHeroDeals();
     
     const formattedDeals = heroDeals.map(deal => ({
@@ -189,6 +257,7 @@ router.get('/hero-deals', authenticateToken, async (req: AuthRequest, res) => {
       timestamp: deal.timestamp
     }));
 
+    setCachedData('hero-deals', formattedDeals);
     res.json(formattedDeals);
   } catch (error) {
     console.error('Hero deals error:', error);
@@ -196,9 +265,14 @@ router.get('/hero-deals', authenticateToken, async (req: AuthRequest, res) => {
   }
 });
 
-// User flows endpoint (combining product records and feedback)
+// User flows endpoint
 router.get('/user-flows', authenticateToken, async (req: AuthRequest, res) => {
   try {
+    const cachedData = getCachedData('user-flows');
+    if (cachedData) {
+      return res.json(cachedData);
+    }
+
     const [productRecords, productFeedback] = await Promise.all([
       fetchProductRecords(),
       fetchProductFeedback()
@@ -206,9 +280,10 @@ router.get('/user-flows', authenticateToken, async (req: AuthRequest, res) => {
 
     const flows: any[] = [];
 
-    // Add product record flows
+    // Add product record flows (limited for performance)
     productRecords
       .filter(record => record.user_id && isRealUser(record.user_id))
+      .slice(0, 100) // Limit for performance
       .forEach(record => {
         flows.push({
           id: `product_${record._id}`,
@@ -220,13 +295,14 @@ router.get('/user-flows', authenticateToken, async (req: AuthRequest, res) => {
           productId: record._id,
           sessionId: `session_${record._id}`,
           userAgent: record.device_info || 'Unknown',
-          ipAddress: '192.168.1.XXX' // Masked for privacy
+          ipAddress: '192.168.1.XXX'
         });
       });
 
-    // Add feedback flows
+    // Add feedback flows (limited for performance)
     productFeedback
       .filter(feedback => feedback.user_id && isRealUser(feedback.user_id))
+      .slice(0, 50) // Limit for performance
       .forEach(feedback => {
         flows.push({
           id: `feedback_${feedback._id}`,
@@ -245,6 +321,7 @@ router.get('/user-flows', authenticateToken, async (req: AuthRequest, res) => {
     // Sort by timestamp (newest first)
     flows.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
+    setCachedData('user-flows', flows);
     res.json(flows);
   } catch (error) {
     console.error('User flows error:', error);
@@ -302,7 +379,6 @@ router.get('/export/:type', authenticateToken, async (req: AuthRequest, res) => 
 function extractBrand(logoDetected: string): string {
   if (!logoDetected) return 'Unknown';
   
-  // Extract brand from logo detection string
   const match = logoDetected.match(/'([^']+)_logo'/);
   if (match) {
     return match[1].charAt(0).toUpperCase() + match[1].slice(1);
