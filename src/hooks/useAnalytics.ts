@@ -1,17 +1,14 @@
-// src/hooks/useAnalytics.ts - Updated for actual API integration
 import { useState, useEffect } from 'react';
-import { FilterOptions, DashboardStats, UserFlow, ProductAnalytics } from '../types';
-import { fetchQRScanData, fetchProductRecords, parseSearchSource, getFlipkartPrice, isRealUser, maskPhoneNumber, categorizeProduct } from '../services/externalApi';
+import { FilterOptions, DashboardStats, ProductAnalytics } from '../types';
+import { fetchQRScanData, fetchProductRecords, parseSearchSource, getFlipkartPrice, isRealUser, maskPhoneNumber, categorizeProduct, isInitialRequest } from '../services/externalApi';
 
 interface LoadingStates {
   dashboard: boolean;
-  userFlows: boolean;
   productAnalytics: boolean;
 }
 
 interface UseAnalyticsReturn {
   stats: DashboardStats | null;
-  userFlows: UserFlow[];
   productAnalytics: ProductAnalytics[];
   loadingStates: LoadingStates;
   isStatsLoaded: boolean;
@@ -22,14 +19,12 @@ interface UseAnalyticsReturn {
 
 export const useAnalytics = (filters: FilterOptions): UseAnalyticsReturn => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [userFlows, setUserFlows] = useState<UserFlow[]>([]);
   const [productAnalytics, setProductAnalytics] = useState<ProductAnalytics[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isStatsLoaded, setIsStatsLoaded] = useState(false);
   
   const [loadingStates, setLoadingStates] = useState<LoadingStates>({
     dashboard: false,
-    userFlows: false,
     productAnalytics: false,
   });
 
@@ -47,16 +42,28 @@ export const useAnalytics = (filters: FilterOptions): UseAnalyticsReturn => {
         fetchProductRecords()
       ]);
 
-      // Filter real users
-      const realProductRecords = productRecords.filter(record => 
+      // FIXED: Use CONSISTENT filtering logic for both dashboard and product analytics
+      // Filter ALL real records (both initial requests and product searches)
+      const allRealRecords = productRecords.filter(record => 
         record.user_id && isRealUser(record.user_id)
       );
 
-      const uniqueUsers = new Set(realProductRecords.map(r => r.user_id)).size;
-      const totalSessions = realProductRecords.length;
+      // Separate initial requests and product searches
+      const initialRequests = allRealRecords.filter(record => 
+        isInitialRequest(record.search_source)
+      );
+
+      const productSearches = allRealRecords.filter(record => 
+        !isInitialRequest(record.search_source)
+      );
+
+      // FIXED: Count unique users from ALL records (consistent with product analytics)
+      const uniqueUsers = new Set(allRealRecords.map(r => r.user_id)).size;
+      const totalApiHits = initialRequests.length;
+      const totalSessions = productSearches.length;
       
       // Calculate success/error rates based on search_source
-      const successfulSessions = realProductRecords.filter(record => {
+      const successfulSessions = productSearches.filter(record => {
         const sourceInfo = parseSearchSource(record.search_source);
         return sourceInfo.status === 'Success';
       }).length;
@@ -64,33 +71,29 @@ export const useAnalytics = (filters: FilterOptions): UseAnalyticsReturn => {
       const errorSessions = totalSessions - successfulSessions;
       
       // Calculate coupon usage
-      const couponsUsed = realProductRecords.filter(record => 
+      const couponsUsed = productSearches.filter(record => 
         record.coupon_code && record.coupon_code !== null
       ).length;
       
       // Calculate exclusive deals
-      const exclusiveDeals = realProductRecords.filter(record => 
+      const exclusiveDeals = productSearches.filter(record => 
         record.exclusive && record.exclusive !== null
       ).length;
 
       // Calculate total savings from search_source
       let totalSavings = 0;
-      realProductRecords.forEach(record => {
+      productSearches.forEach(record => {
         const sourceInfo = parseSearchSource(record.search_source);
-        if (sourceInfo.savings) {
-          const savingsMatch = sourceInfo.savings.match(/₹([\d,]+)/);
-          if (savingsMatch) {
-            totalSavings += parseInt(savingsMatch[1].replace(/,/g, ''));
-          }
+        if (sourceInfo.savingsAmount > 0) {
+          totalSavings += sourceInfo.savingsAmount;
         }
       });
 
       const conversionRate = totalSessions > 0 ? ((successfulSessions / totalSessions) * 100).toFixed(2) : '0';
-      const avgSavingsPerSession = totalSessions > 0 ? Math.round(totalSavings / totalSessions) : 0;
 
       const dashboardStats: DashboardStats = {
         totalUsers: uniqueUsers,
-        uniqueUsers: uniqueUsers,
+        uniqueUsers: uniqueUsers, // FIXED: Now consistent with product analytics
         totalSessions,
         totalErrors: errorSessions,
         conversionRate,
@@ -104,7 +107,7 @@ export const useAnalytics = (filters: FilterOptions): UseAnalyticsReturn => {
         dataSource: 'live',
         avgSessionDuration: '2:30',
         qrScans: qrData.data?.qrData?.qr_scan_count || 0,
-        topProducts: realProductRecords.slice(0, 5).map(record => ({
+        topProducts: productSearches.slice(0, 5).map(record => ({
           id: record._id,
           productName: record.product_name,
           category: categorizeProduct(record.Category, record.product_name),
@@ -117,61 +120,12 @@ export const useAnalytics = (filters: FilterOptions): UseAnalyticsReturn => {
 
       setStats(dashboardStats);
       setIsStatsLoaded(true);
-      console.log('Dashboard stats loaded successfully');
+      console.log(`✅ Dashboard stats loaded - Unique Users: ${uniqueUsers}, Total Sessions: ${totalSessions}`);
     } catch (error: any) {
       console.error('Dashboard stats error:', error);
       setError(error.message);
     } finally {
       updateLoadingState('dashboard', false);
-    }
-  };
-
-  const fetchUserFlows = async () => {
-    updateLoadingState('userFlows', true);
-    try {
-      console.log('Fetching user flows...');
-      
-      const productRecords = await fetchProductRecords();
-      const realProductRecords = productRecords.filter(record => 
-        record.user_id && isRealUser(record.user_id)
-      );
-
-      const flows: UserFlow[] = realProductRecords.map((record, index) => {
-        const sourceInfo = parseSearchSource(record.search_source);
-
-        // Ensure id is always a string
-        let id: string;
-        if (typeof record._id === 'string') {
-          id = record._id;
-        } else if (record._id && typeof record._id === 'object' && '$oid' in record._id) {
-          id = record._id.$oid;
-        } else {
-          id = String(record._id);
-        }
-
-        return {
-          id: id,
-          userId: maskPhoneNumber(record.user_id),
-          timestamp: record.timestamp,
-          source: sourceInfo.inputType || 'Unknown',
-          destination: sourceInfo.platform || 'Product Search',
-          action: sourceInfo.status === 'Success' ? 'success' : 'error',
-          productName: record.product_name,
-          productBrand: sourceInfo.flipkartName || 'Unknown',
-          sessionId: `session_${id}`,
-          userAgent: record.device_info || 'Unknown',
-          ipAddress: 'Hidden'
-        };
-      });
-
-      flows.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      setUserFlows(flows.slice(0, 100)); // Limit to 100 for performance
-      console.log(`User flows loaded: ${flows.length} records`);
-    } catch (error: any) {
-      console.error('User flows error:', error);
-      setUserFlows([]);
-    } finally {
-      updateLoadingState('userFlows', false);
     }
   };
 
@@ -181,11 +135,13 @@ export const useAnalytics = (filters: FilterOptions): UseAnalyticsReturn => {
       console.log('Fetching product analytics...');
       
       const productRecords = await fetchProductRecords();
-      const realProductRecords = productRecords.filter(record => 
+      
+      // FIXED: Use SAME filtering logic as dashboard
+      const allRealRecords = productRecords.filter(record => 
         record.user_id && isRealUser(record.user_id)
       );
 
-      const analytics: ProductAnalytics[] = realProductRecords.map(record => {
+      const analytics: ProductAnalytics[] = allRealRecords.map(record => {
         const sourceInfo = parseSearchSource(record.search_source);
         const flipkartPrice = getFlipkartPrice(record.flipkart_price);
         const priceValue = flipkartPrice.replace(/[₹,]/g, '') || '0';
@@ -221,7 +177,7 @@ export const useAnalytics = (filters: FilterOptions): UseAnalyticsReturn => {
       });
 
       setProductAnalytics(analytics);
-      console.log(`Product analytics loaded: ${analytics.length} records`);
+      console.log(`✅ Product analytics loaded: ${analytics.length} records`);
     } catch (error: any) {
       console.error('Product analytics error:', error);
       setProductAnalytics([]);
@@ -239,10 +195,6 @@ export const useAnalytics = (filters: FilterOptions): UseAnalyticsReturn => {
         case 'products':
           data = productAnalytics;
           filename = `product_analytics_${new Date().toISOString().split('T')[0]}`;
-          break;
-        case 'user-flows':
-          data = userFlows;
-          filename = `user_flows_${new Date().toISOString().split('T')[0]}`;
           break;
         default:
           throw new Error('Invalid export type');
@@ -271,8 +223,7 @@ export const useAnalytics = (filters: FilterOptions): UseAnalyticsReturn => {
     await fetchDashboardStats();
     
     // Then load other data with small delays for better UX
-    setTimeout(() => fetchUserFlows(), 100);
-    setTimeout(() => fetchProductAnalyticsData(), 200);
+    setTimeout(() => fetchProductAnalyticsData(), 100);
   };
 
   useEffect(() => {
@@ -292,7 +243,6 @@ export const useAnalytics = (filters: FilterOptions): UseAnalyticsReturn => {
 
   return {
     stats,
-    userFlows,
     productAnalytics,
     loadingStates,
     isStatsLoaded,

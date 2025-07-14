@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { fetchProductRecords, parseSearchSource, isRealUser, maskPhoneNumber, categorizeProduct } from '../../services/externalApi';
-import { Download, Filter, Search, TrendingUp, AlertCircle, CheckCircle, Image, Link, Type } from 'lucide-react';
+import { Download, Filter, Search, TrendingUp, AlertCircle, CheckCircle, Image, Link, Type, ChevronLeft, ChevronRight, Eye, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
@@ -23,6 +23,43 @@ interface ProductRecord {
   hero_deal: string | null;
   coupon_code: string | null;
 }
+
+// Image Preview Modal Component
+const ImagePreviewModal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  imageUrl: string;
+  productName: string;
+}> = ({ isOpen, onClose, imageUrl, productName }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900">{productName}</h3>
+          <button
+            onClick={onClose}
+            className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        
+        <div className="p-4 flex items-center justify-center">
+          <img 
+            src={imageUrl} 
+            alt={productName}
+            className="max-w-full max-h-[70vh] object-contain rounded-lg"
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgdmlld0JveD0iMCAwIDIwMCAyMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0xMDAgNzBMMTMwIDEwMEgxMTBWMTMwSDkwVjEwMEg3MEwxMDAgNzBaIiBmaWxsPSIjOUI5Qjk5Ii8+Cjx0ZXh0IHg9IjEwMCIgeT0iMTUwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjOUI5Qjk5IiBmb250LXNpemU9IjEyIj5JbWFnZSBub3QgZm91bmQ8L3RleHQ+Cjwvc3ZnPg==';
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // Helper functions at the top level
 const getInputTypeColor = (type: string): string => {
@@ -93,6 +130,25 @@ const ProductAnalytics: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(20);
   const [activeTab, setActiveTab] = useState('overview');
+  
+  // User Analysis pagination
+  const [userCurrentPage, setUserCurrentPage] = useState(1);
+  const [userItemsPerPage] = useState(15);
+  
+  // Image uploads pagination
+  const [imageCurrentPage, setImageCurrentPage] = useState(1);
+  const [imageItemsPerPage] = useState(12);
+  
+  // Image preview modal
+  const [previewImage, setPreviewImage] = useState<{
+    isOpen: boolean;
+    imageUrl: string;
+    productName: string;
+  }>({
+    isOpen: false,
+    imageUrl: '',
+    productName: ''
+  });
 
   useEffect(() => {
     loadProductData();
@@ -107,23 +163,20 @@ const ProductAnalytics: React.FC = () => {
     try {
       const records = await fetchProductRecords();
       
-      // Filter out INITIAL REQUEST records for main analytics
-      const filteredRecords = records.filter(record => 
+      // FIXED: Use consistent filtering - include ALL real user records
+      const allRealRecords = records.filter(record => 
         record.user_id && 
-        isRealUser(record.user_id) &&
-        !isInitialRequest(record.search_source || '')
+        isRealUser(record.user_id)
       );
 
-      // Get image uploads
-      const imageRecords = records.filter(record =>
-        record.user_id &&
-        isRealUser(record.user_id) &&
+      // Get image uploads with proper filtering
+      const imageRecords = allRealRecords.filter(record =>
         record.input_type === 'image_url' &&
         record.image_path &&
         !isInitialRequest(record.search_source || '')
       );
 
-      setProductRecords(filteredRecords);
+      setProductRecords(allRealRecords);
       setImageUploads(imageRecords);
     } catch (error) {
       console.error('Error loading product data:', error);
@@ -164,7 +217,7 @@ const ProductAnalytics: React.FC = () => {
 
   const totalPages = Math.ceil(filteredRecords.length / itemsPerPage);
 
-  // Analytics calculations
+  // Enhanced user analytics with category and input type details
   const userStats = React.useMemo(() => {
     const userMap = new Map();
     
@@ -174,16 +227,22 @@ const ProductAnalytics: React.FC = () => {
         userMap.set(userId, {
           userId: maskPhoneNumber(userId),
           totalHits: 0,
-          categories: new Set(),
-          inputTypes: new Set(),
+          categories: new Map(),
+          inputTypes: new Map(),
           lastActivity: record.timestamp
         });
       }
       
       const user = userMap.get(userId);
       user.totalHits++;
-      user.categories.add(categorizeProduct(record.Category, record.product_name));
-      user.inputTypes.add(record.input_type);
+      
+      // Track categories with counts
+      const category = categorizeProduct(record.Category, record.product_name);
+      user.categories.set(category, (user.categories.get(category) || 0) + 1);
+      
+      // Track input types with counts
+      const inputType = record.input_type || 'unknown';
+      user.inputTypes.set(inputType, (user.inputTypes.get(inputType) || 0) + 1);
       
       if (new Date(record.timestamp) > new Date(user.lastActivity)) {
         user.lastActivity = record.timestamp;
@@ -192,6 +251,20 @@ const ProductAnalytics: React.FC = () => {
 
     return Array.from(userMap.values()).sort((a, b) => b.totalHits - a.totalHits);
   }, [filteredRecords]);
+
+  // User analysis pagination
+  const paginatedUserStats = userStats.slice(
+    (userCurrentPage - 1) * userItemsPerPage,
+    userCurrentPage * userItemsPerPage
+  );
+  const userTotalPages = Math.ceil(userStats.length / userItemsPerPage);
+
+  // Image uploads pagination
+  const paginatedImageUploads = imageUploads.slice(
+    (imageCurrentPage - 1) * imageItemsPerPage,
+    imageCurrentPage * imageItemsPerPage
+  );
+  const imageTotalPages = Math.ceil(imageUploads.length / imageItemsPerPage);
 
   const inputTypeStats = React.useMemo(() => {
     const stats = filteredRecords.reduce((acc, record) => {
@@ -518,7 +591,7 @@ const ProductAnalytics: React.FC = () => {
 
       {activeTab === 'users' && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">User Analysis</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Enhanced User Analysis</h3>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -531,12 +604,34 @@ const ProductAnalytics: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {userStats.slice(0, 50).map((user, index) => (
+                {paginatedUserStats.map((user, index) => (
                   <tr key={user.userId} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
                     <td className="py-3 px-4 text-sm text-gray-900 font-mono">{user.userId}</td>
                     <td className="py-3 px-4 text-sm text-gray-900">{user.totalHits}</td>
-                    <td className="py-3 px-4 text-sm text-gray-900">{user.categories.size}</td>
-                    <td className="py-3 px-4 text-sm text-gray-900">{user.inputTypes.size}</td>
+                    <td className="py-3 px-4">
+                      <div className="flex flex-wrap gap-1">
+                        {Array.from(user.categories.entries()).map(([category, count]) => (
+                          <span
+                            key={category}
+                            className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full"
+                          >
+                            {category}: {count}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="py-3 px-4">
+                      <div className="flex flex-wrap gap-1">
+                        {Array.from(user.inputTypes.entries()).map(([type, count]) => (
+                          <span
+                            key={type}
+                            className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full"
+                          >
+                            {type}: {count}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
                     <td className="py-3 px-4 text-sm text-gray-900">
                       {user.lastActivity ? format(new Date(user.lastActivity), 'MMM dd, yyyy HH:mm') : 'N/A'}
                     </td>
@@ -545,30 +640,90 @@ const ProductAnalytics: React.FC = () => {
               </tbody>
             </table>
           </div>
+
+          {/* User Analysis Pagination */}
+          {userTotalPages > 1 && (
+            <div className="flex items-center justify-between mt-6">
+              <div className="text-sm text-gray-700">
+                Showing {((userCurrentPage - 1) * userItemsPerPage) + 1} to {Math.min(userCurrentPage * userItemsPerPage, userStats.length)} of {userStats.length} users
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setUserCurrentPage(prev => Math.max(prev - 1, 1))}
+                  disabled={userCurrentPage === 1}
+                  className="flex items-center gap-1 px-3 py-1 border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  Previous
+                </button>
+                <span className="px-3 py-1 text-sm text-gray-700">
+                  Page {userCurrentPage} of {userTotalPages}
+                </span>
+                <button
+                  onClick={() => setUserCurrentPage(prev => Math.min(prev + 1, userTotalPages))}
+                  disabled={userCurrentPage === userTotalPages}
+                  className="flex items-center gap-1 px-3 py-1 border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  Next
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       {activeTab === 'images' && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Image Uploads</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Image Uploads with Preview</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {imageUploads.slice(0, 20).map((record) => (
-              <div key={extractId(record._id)} className="border border-gray-200 rounded-lg p-4">
-                <div className="aspect-square bg-gray-100 rounded-lg mb-3 flex items-center justify-center">
+            {paginatedImageUploads.map((record) => (
+              <div key={extractId(record._id)} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                <div className="aspect-square bg-gray-100 rounded-lg mb-3 flex items-center justify-center relative overflow-hidden">
                   {record.image_path ? (
-                    <img 
-                      src={record.image_path} 
-                      alt={safeRender(record.product_name)}
-                      className="w-full h-full object-cover rounded-lg"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = 'none';
-                        (e.target as HTMLImageElement).nextElementSibling!.classList.remove('hidden');
-                      }}
-                    />
-                  ) : null}
-                  <div className="hidden text-gray-400">
-                    <Image className="w-8 h-8" />
-                  </div>
+                    <>
+                      <img 
+                        src={record.image_path} 
+                        alt={safeRender(record.product_name)}
+                        className="w-full h-full object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                        onClick={() => setPreviewImage({
+                          isOpen: true,
+                          imageUrl: record.image_path,
+                          productName: safeRender(record.product_name)
+                        })}
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                          const parent = target.parentElement;
+                          if (parent) {
+                            parent.innerHTML = `
+                              <div class="flex flex-col items-center justify-center text-gray-400 h-full">
+                                <svg class="w-8 h-8 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                                </svg>
+                                <span class="text-xs">Image not found</span>
+                              </div>
+                            `;
+                          }
+                        }}
+                      />
+                      <button
+                        onClick={() => setPreviewImage({
+                          isOpen: true,
+                          imageUrl: record.image_path,
+                          productName: safeRender(record.product_name)
+                        })}
+                        className="absolute top-2 right-2 p-1 bg-black bg-opacity-50 text-white rounded-full hover:bg-opacity-70 transition-all"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                    </>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center text-gray-400">
+                      <Image className="w-8 h-8 mb-2" />
+                      <span className="text-xs">No image</span>
+                    </div>
+                  )}
                 </div>
                 <p className="text-sm font-medium text-gray-900 truncate">{safeRender(record.product_name)}</p>
                 <p className="text-xs text-gray-600">{maskPhoneNumber(safeRender(record.user_id))}</p>
@@ -578,8 +733,46 @@ const ProductAnalytics: React.FC = () => {
               </div>
             ))}
           </div>
+
+          {/* Image Uploads Pagination */}
+          {imageTotalPages > 1 && (
+            <div className="flex items-center justify-between mt-6">
+              <div className="text-sm text-gray-700">
+                Showing {((imageCurrentPage - 1) * imageItemsPerPage) + 1} to {Math.min(imageCurrentPage * imageItemsPerPage, imageUploads.length)} of {imageUploads.length} images
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setImageCurrentPage(prev => Math.max(prev - 1, 1))}
+                  disabled={imageCurrentPage === 1}
+                  className="flex items-center gap-1 px-3 py-1 border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  Previous
+                </button>
+                <span className="px-3 py-1 text-sm text-gray-700">
+                  Page {imageCurrentPage} of {imageTotalPages}
+                </span>
+                <button
+                  onClick={() => setImageCurrentPage(prev => Math.min(prev + 1, imageTotalPages))}
+                  disabled={imageCurrentPage === imageTotalPages}
+                  className="flex items-center gap-1 px-3 py-1 border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  Next
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
+
+      {/* Image Preview Modal */}
+      <ImagePreviewModal
+        isOpen={previewImage.isOpen}
+        onClose={() => setPreviewImage({ isOpen: false, imageUrl: '', productName: '' })}
+        imageUrl={previewImage.imageUrl}
+        productName={previewImage.productName}
+      />
     </div>
   );
 };
