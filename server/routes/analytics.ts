@@ -13,7 +13,8 @@ import {
   generateOptimizedCouponAnalytics, 
   fetchCouponData,
   fetchCouponLinks,
-  CouponAnalytics
+  CouponAnalytics,
+  getCouponSummaryStats
 } from '../services/couponService';
 import { maskPhoneNumber, isRealUser } from '../utils/phoneUtils';
 
@@ -194,7 +195,7 @@ router.get('/products', async (req: AuthRequest, res) => {
 // FIXED Coupon analytics endpoint
 router.get('/coupons', async (req: AuthRequest, res) => {
   try {
-    const { type, limit = 50 } = req.query;
+    const { type, limit = 50, summary } = req.query;
     const cacheKey = `coupons_${type || 'all'}_${limit}`;
     const cachedData = getCachedData(cacheKey);
     
@@ -204,7 +205,10 @@ router.get('/coupons', async (req: AuthRequest, res) => {
 
     console.log('Fetching coupon analytics...');
 
-    const couponAnalytics = await generateOptimizedCouponAnalytics();
+    const [couponAnalytics, summaryStats] = await Promise.all([
+      generateOptimizedCouponAnalytics(),
+      summary ? getCouponSummaryStats() : Promise.resolve(null)
+    ]);
     
     let filteredAnalytics = couponAnalytics;
     if (type) {
@@ -215,7 +219,7 @@ router.get('/coupons', async (req: AuthRequest, res) => {
 
     const limitedAnalytics = filteredAnalytics.slice(0, parseInt(limit.toString()));
 
-    const summary = {
+    const analyticsummary = {
       totalCoupons: filteredAnalytics.reduce((sum: number, c: any) => sum + (c.totalCoupons || 0), 0),
       totalUsed: filteredAnalytics.reduce((sum: number, c: any) => sum + (c.usedCoupons || 0), 0),
       totalValue: filteredAnalytics.reduce((sum: number, c: any) => sum + (c.totalValue || 0), 0),
@@ -227,7 +231,7 @@ router.get('/coupons', async (req: AuthRequest, res) => {
 
     const result = {
       analytics: limitedAnalytics,
-      summary,
+      summary: summary ? summaryStats : analyticsummary,
       totalRecords: filteredAnalytics.length,
       lastUpdated: new Date().toISOString()
     };
