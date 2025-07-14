@@ -5,6 +5,7 @@ import Sidebar from './components/Layout/Sidebar';
 import DashboardOverview from './components/Dashboard/DashboardOverview';
 import UserFlowAnalytics from './components/Analytics/UserFlowAnalytics';
 import ProductAnalytics from './components/Analytics/ProductAnalytics';
+import CouponAnalytics from './components/Analytics/CouponAnalytics';
 import UserManagement from './components/UserManagement/UserManagement';
 import FilterPanel from './components/FilterPanel';
 import { useAnalytics } from './hooks/useAnalytics';
@@ -76,18 +77,7 @@ const Dashboard: React.FC = () => {
       case 'dashboard':
         return <DashboardOverview stats={stats} onRefreshQrScans={handleRefreshQrScans} />;
       case 'products':
-        return (
-          <div>
-            {loadingStates.productAnalytics && productAnalytics.length === 0 ? (
-              <div className="p-6 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                <span className="ml-3 text-gray-600">Loading product analytics...</span>
-              </div>
-            ) : (
-              <ProductAnalytics productAnalytics={productAnalytics} onExport={exportData} />
-            )}
-          </div>
-        );
+        return <ProductAnalytics />;
       case 'user-flows':
         return (
           <div>
@@ -101,6 +91,8 @@ const Dashboard: React.FC = () => {
             )}
           </div>
         );
+      case 'coupons':
+        return <CouponAnalytics />;
       case 'users':
         return user?.role === 'admin' ? <UserManagement /> : null;
       default:

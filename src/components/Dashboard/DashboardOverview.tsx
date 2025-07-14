@@ -1,7 +1,9 @@
-import React from 'react';
-import { Users, Activity, ShoppingCart, TrendingUp, AlertCircle, QrCode, RefreshCw, Ticket } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Users, Activity, ShoppingCart, TrendingUp, AlertCircle, QrCode, RefreshCw, Ticket, Smartphone, Monitor } from 'lucide-react';
 import { DashboardStats } from '../../types';
 import StatsCard from './StatsCard';
+import { fetchProductRecords, fetchQRScanData, parseSearchSource, isRealUser, categorizeProduct } from '../../services/externalApi';
+import { generateCouponAnalytics } from '../../services/couponService';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 
 interface DashboardOverviewProps {
@@ -34,8 +36,113 @@ const ChartSkeleton: React.FC = () => (
 );
 
 const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQrScans }) => {
-  // Show skeleton while stats are loading
-  if (!stats) {
+  const [realTimeStats, setRealTimeStats] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadRealTimeData();
+  }, []);
+
+  const loadRealTimeData = async () => {
+    try {
+      const [productRecords, qrData, couponAnalytics] = await Promise.all([
+        fetchProductRecords(),
+        fetchQRScanData(),
+        generateCouponAnalytics()
+      ]);
+
+      // Filter real users and INITIAL REQUEST records
+      const initialRequests = productRecords.filter(record => 
+        record.user_id && 
+        isRealUser(record.user_id) &&
+        record.search_source?.includes('INITIAL REQUEST')
+      );
+
+      const realProductRecords = productRecords.filter(record => 
+        record.user_id && 
+        isRealUser(record.user_id) &&
+        !record.search_source?.includes('INITIAL REQUEST')
+      );
+
+      // Calculate metrics
+      const uniqueUsers = new Set(realProductRecords.map(r => r.user_id)).size;
+      const totalApiHits = initialRequests.length;
+      
+      // Softline vs Hardline analysis
+      const softlineCount = realProductRecords.filter(record => {
+        const sourceInfo = parseSearchSource(record.search_source);
+        return sourceInfo.category === 'Softline';
+      }).length;
+      
+      const hardlineCount = realProductRecords.filter(record => {
+        const sourceInfo = parseSearchSource(record.search_source);
+        return sourceInfo.category === 'Hardline';
+      }).length;
+
+      // Exclusive products
+      const exclusiveProducts = realProductRecords.filter(record => 
+        record.exclusive && record.exclusive !== null
+      ).length;
+
+      // Flipkart savings
+      const flipkartSavings = realProductRecords.reduce((total, record) => {
+        const sourceInfo = parseSearchSource(record.search_source);
+        if (sourceInfo.platform === 'Flipkart' && sourceInfo.savings) {
+          const savingsMatch = sourceInfo.savings.match(/₹([\d,]+)/);
+          if (savingsMatch) {
+            return total + parseInt(savingsMatch[1].replace(/,/g, ''));
+          }
+        }
+        return total;
+      }, 0);
+
+      // Platform distribution
+      const platformStats = realProductRecords.reduce((acc, record) => {
+        const sourceInfo = parseSearchSource(record.search_source);
+        const platform = sourceInfo.platform || 'Unknown';
+        acc[platform] = (acc[platform] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+      // Error analysis
+      const errorCount = realProductRecords.filter(record => {
+        const sourceInfo = parseSearchSource(record.search_source);
+        return sourceInfo.status === 'Error' || record.search_source?.toLowerCase().includes('error');
+      }).length;
+
+      // Category analysis for coupons
+      const couponCategoryStats = couponAnalytics.reduce((acc, coupon) => {
+        acc[coupon.category] = (acc[coupon.category] || 0) + coupon.usedCoupons;
+        return acc;
+      }, {} as Record<string, number>);
+
+      const mostUsedCouponCategory = Object.entries(couponCategoryStats)
+        .sort(([,a], [,b]) => b - a)[0]?.[0] || 'Fashion';
+
+      setRealTimeStats({
+        totalApiHits,
+        uniqueUsers,
+        softlineCount,
+        hardlineCount,
+        exclusiveProducts,
+        flipkartSavings,
+        platformStats,
+        errorCount,
+        qrScanCount: qrData.data?.qrData?.qr_scan_count || 0,
+        mostUsedCouponCategory,
+        totalCouponsUsed: couponAnalytics.reduce((sum, c) => sum + c.usedCoupons, 0),
+        deviceBreakdown: qrData.data?.qrData?.analytics?.deviceBreakdown || { mobile: 0, tablet: 0, desktop: 0 },
+        dailyScans: qrData.data?.qrData?.analytics?.timeStats?.dailyScans || {}
+      });
+    } catch (error) {
+      console.error('Error loading real-time data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Show skeleton while loading
+  if (loading || !realTimeStats) {
     return (
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between">
@@ -71,20 +178,24 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
     );
   }
 
-  const conversionData = [
-    { name: 'Jan', conversions: 45, visits: 100 },
-    { name: 'Feb', conversions: 52, visits: 120 },
-    { name: 'Mar', conversions: 38, visits: 95 },
-    { name: 'Apr', conversions: 61, visits: 140 },
-    { name: 'May', conversions: 48, visits: 110 },
-    { name: 'Jun', conversions: 55, visits: 125 },
-  ];
+  const platformData = Object.entries(realTimeStats.platformStats).map(([platform, count]) => ({
+    name: platform,
+    value: count as number,
+    color: platform === 'Flipkart' ? '#F59E0B' : platform === 'Amazon' ? '#FF9500' : '#3B82F6'
+  }));
 
-  const pieData = [
-    { name: 'Success', value: 75, color: '#10B981' },
-    { name: 'Errors', value: 15, color: '#EF4444' },
-    { name: 'Pending', value: 10, color: '#F59E0B' },
-  ];
+  const deviceData = Object.entries(realTimeStats.deviceBreakdown).map(([device, count]) => ({
+    name: device,
+    value: count as number,
+    color: device === 'mobile' ? '#10B981' : device === 'tablet' ? '#8B5CF6' : '#3B82F6'
+  }));
+
+  const dailyScanData = Object.entries(realTimeStats.dailyScans)
+    .slice(-7)
+    .map(([date, scans]) => ({
+      date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      scans: scans as number
+    }));
 
   return (
     <div className="p-6 space-y-6">
@@ -98,7 +209,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
                 <div>
                   <p className="text-sm font-medium text-gray-700">QR Scans</p>
                   <p className="text-lg font-bold text-gray-900">
-                    {(stats.qrScans || stats.qrScanCount || 0).toLocaleString()}
+                    {realTimeStats.qrScanCount.toLocaleString()}
                   </p>
                 </div>
               </div>
@@ -111,187 +222,71 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
               </button>
             </div>
             <p className="text-xs text-gray-500 mt-1">
-              Today: {Math.floor((stats.qrScans || stats.qrScanCount || 0) * 0.05).toLocaleString()}
+              Live count from QR system
             </p>
           </div>
           
           <div className="text-sm text-gray-500">
-            Last updated: {stats.lastUpdated ? new Date(stats.lastUpdated).toLocaleString() : new Date().toLocaleString()}
+            Last updated: {new Date().toLocaleString()}
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
         <StatsCard
-          title="Total Users"
-          value={stats.totalUsers}
+          title="API Hits (Initial)"
+          value={realTimeStats.totalApiHits}
           change={12.5}
-          icon={Users}
+          icon={Activity}
           color="blue"
         />
         <StatsCard
           title="Unique Users"
-          value={stats.uniqueUsers}
+          value={realTimeStats.uniqueUsers}
           change={8.2}
-          icon={Activity}
+          icon={Users}
           color="green"
         />
         <StatsCard
-          title="Total Sessions"
-          value={stats.totalSessions}
-          change={-2.4}
-          icon={TrendingUp}
+          title="Softline Products"
+          value={realTimeStats.softlineCount}
+          icon={ShoppingCart}
           color="yellow"
         />
         <StatsCard
-          title="Error Rate"
-          value={stats.totalSessions > 0 ? ((stats.totalErrors / stats.totalSessions) * 100).toFixed(1) : '0'}
-          change={-5.1}
+          title="Hardline Products"
+          value={realTimeStats.hardlineCount}
+          icon={Monitor}
+          color="purple"
+        />
+        <StatsCard
+          title="Exclusive Products"
+          value={realTimeStats.exclusiveProducts}
+          icon={Ticket}
+          color="pink"
+        />
+        <StatsCard
+          title="Error Messages"
+          value={realTimeStats.errorCount}
           icon={AlertCircle}
           color="red"
-          suffix="%"
-        />
-        <StatsCard
-          title="Coupons Used"
-          value={stats.totalCouponsUsed}
-          icon={Ticket}
-          color="green"
-        />
-        <StatsCard
-          title="Total Savings"
-          value={`₹${(stats.totalSavings / 1000).toFixed(0)}K`}
-          icon={TrendingUp}
-          color="blue"
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Conversion Trends</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={conversionData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis />
-              <Tooltip />
-              <Line type="monotone" dataKey="conversions" stroke="#3B82F6" strokeWidth={2} />
-              <Line type="monotone" dataKey="visits" stroke="#10B981" strokeWidth={2} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Success Rate Distribution</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie
-                data={pieData}
-                cx="50%"
-                cy="50%"
-                labelLine={false}
-                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                outerRadius={80}
-                fill="#8884d8"
-                dataKey="value"
-              >
-                {pieData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Top Performing Products</h3>
-        {stats.topProducts && stats.topProducts.length > 0 ? (
-          <div className="space-y-4">
-            {stats.topProducts.slice(0, 5).map((product: any, index: number) => (
-              <div key={product.id || index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-4">
-                  <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                    <span className="text-white text-sm font-medium">{index + 1}</span>
-                  </div>
-                  <div>
-                    <h4 className="font-medium text-gray-900">{product.productName || product.product_name || 'Unknown Product'}</h4>
-                    <p className="text-sm text-gray-600">
-                      {product.category || product.product_category || 'Unknown'} • {product.brand || product.product_brand || 'Unknown'}
-                    </p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-lg font-semibold text-gray-900">
-                    ₹{(product.price || product.product_price || 0).toLocaleString()}
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    {product.successCount || product.count || 0} interactions
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-8">
-            <ShoppingCart className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-500">No product data available yet</p>
-            <p className="text-sm text-gray-400 mt-1">Product analytics will appear here once data is collected</p>
-          </div>
-        )}
-      </div>
-
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Top Performing Coupons</h3>
-        {stats.topCoupons && stats.topCoupons.length > 0 ? (
-          <div className="space-y-4">
-            {stats.topCoupons.slice(0, 5).map((coupon: any, index: number) => (
-              <div key={coupon.id || index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-4">
-                  <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center">
-                    <span className="text-white text-sm font-medium">{index + 1}</span>
-                  </div>
-                  <div>
-                    <h4 className="font-medium text-gray-900">{coupon.category || 'Unknown Category'}</h4>
-                    <p className="text-sm text-gray-600">
-                      {coupon.brand || 'Unknown'} • {coupon.model || 'All Models'}
-                    </p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-lg font-semibold text-gray-900">
-                    {(coupon.usageRate || 0).toFixed(1)}% usage
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    ₹{(coupon.totalValue || 0).toLocaleString()} saved
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-8">
-            <Ticket className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-500">No coupon data available yet</p>
-            <p className="text-sm text-gray-400 mt-1">Coupon analytics will appear here once data is collected</p>
-          </div>
-        )}
-      </div>
-
-      {/* Additional metrics */}
+      {/* Additional Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-blue-600" />
+            <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
+              <TrendingUp className="w-5 h-5 text-yellow-600" />
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900">Conversion Rate</h3>
-              <p className="text-2xl font-bold text-blue-600">{stats.conversionRate}%</p>
+              <h3 className="font-semibold text-gray-900">Flipkart Savings</h3>
+              <p className="text-2xl font-bold text-yellow-600">₹{realTimeStats.flipkartSavings.toLocaleString()}</p>
             </div>
           </div>
           <p className="text-sm text-gray-600">
-            Of total sessions that resulted in coupon usage
+            Total savings when Flipkart is the best platform
           </p>
         </div>
 
@@ -301,28 +296,123 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
               <Ticket className="w-5 h-5 text-green-600" />
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900">Coupon Usage Rate</h3>
-              <p className="text-2xl font-bold text-green-600">{stats.couponUsageRate}%</p>
+              <h3 className="font-semibold text-gray-900">Top Coupon Category</h3>
+              <p className="text-2xl font-bold text-green-600">{realTimeStats.mostUsedCouponCategory}</p>
             </div>
           </div>
           <p className="text-sm text-gray-600">
-            Of available coupons that have been used
+            Most frequently used coupon category
           </p>
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-yellow-600" />
+            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+              <Users className="w-5 h-5 text-blue-600" />
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900">Avg Savings/Coupon</h3>
-              <p className="text-2xl font-bold text-yellow-600">₹{stats.avgSavingsPerCoupon}</p>
+              <h3 className="font-semibold text-gray-900">Coupons Used</h3>
+              <p className="text-2xl font-bold text-blue-600">{realTimeStats.totalCouponsUsed}</p>
             </div>
           </div>
           <p className="text-sm text-gray-600">
-            Average savings per coupon redemption
+            Total coupons redeemed by users
           </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Platform Distribution</h3>
+          <ResponsiveContainer width="100%" height={250}>
+            <PieChart>
+              <Pie
+                data={platformData}
+                cx="50%"
+                cy="50%"
+                labelLine={false}
+                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                outerRadius={80}
+                fill="#8884d8"
+                dataKey="value"
+              >
+                {platformData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} />
+                ))}
+              </Pie>
+              <Tooltip />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Device Breakdown</h3>
+          <ResponsiveContainer width="100%" height={250}>
+            <PieChart>
+              <Pie
+                data={deviceData}
+                cx="50%"
+                cy="50%"
+                labelLine={false}
+                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                outerRadius={80}
+                fill="#8884d8"
+                dataKey="value"
+              >
+                {deviceData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} />
+                ))}
+              </Pie>
+              <Tooltip />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">QR Scan Trends (7 Days)</h3>
+          <ResponsiveContainer width="100%" height={250}>
+            <LineChart data={dailyScanData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="date" />
+              <YAxis />
+              <Tooltip />
+              <Line type="monotone" dataKey="scans" stroke="#3B82F6" strokeWidth={2} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Real-time Insights */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Key Insights</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-blue-50 rounded-lg p-4">
+            <h4 className="font-medium text-blue-900 mb-2">User Engagement</h4>
+            <p className="text-sm text-blue-700">
+              {realTimeStats.uniqueUsers} unique users generated {realTimeStats.totalApiHits} API requests
+            </p>
+          </div>
+          
+          <div className="bg-green-50 rounded-lg p-4">
+            <h4 className="font-medium text-green-900 mb-2">Product Categories</h4>
+            <p className="text-sm text-green-700">
+              {realTimeStats.softlineCount} Softline vs {realTimeStats.hardlineCount} Hardline products
+            </p>
+          </div>
+          
+          <div className="bg-yellow-50 rounded-lg p-4">
+            <h4 className="font-medium text-yellow-900 mb-2">Platform Performance</h4>
+            <p className="text-sm text-yellow-700">
+              Flipkart savings: ₹{realTimeStats.flipkartSavings.toLocaleString()}
+            </p>
+          </div>
+          
+          <div className="bg-purple-50 rounded-lg p-4">
+            <h4 className="font-medium text-purple-900 mb-2">Quality Metrics</h4>
+            <p className="text-sm text-purple-700">
+              {realTimeStats.errorCount} errors out of {realTimeStats.totalApiHits + realTimeStats.uniqueUsers} total requests
+            </p>
+          </div>
         </div>
       </div>
     </div>

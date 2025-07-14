@@ -1,42 +1,234 @@
-import React, { useState } from 'react';
-import { ProductAnalytics as ProductAnalyticsType } from '../../types';
-import { Download, Filter, Search, TrendingUp, AlertCircle, CheckCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { fetchProductRecords, parseSearchSource, isRealUser, maskPhoneNumber, categorizeProduct } from '../../services/externalApi';
+import { Download, Filter, Search, TrendingUp, AlertCircle, CheckCircle, Image, Link, Type } from 'lucide-react';
 import { format } from 'date-fns';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
-interface ProductAnalyticsProps {
-  productAnalytics: ProductAnalyticsType[];
-  onExport: (type: 'products', format: 'csv' | 'json') => void;
+interface ProductRecord {
+  _id: string;
+  user_id: string;
+  product_name: string;
+  price: string;
+  image_path: string;
+  timestamp: string;
+  device_info: string;
+  logo_detected: string;
+  search_source: string;
+  amazon_price: string;
+  flipkart_price: any;
+  input_type: string;
+  flipkart_product_name: string;
+  Category: string;
+  exclusive: string | null;
+  hero_deal: string | null;
+  coupon_code: string | null;
 }
 
-const ProductAnalytics: React.FC<ProductAnalyticsProps> = ({ productAnalytics, onExport }:any) => {
+const ProductAnalytics: React.FC = () => {
+  const [productRecords, setProductRecords] = useState<ProductRecord[]>([]);
+  const [filteredRecords, setFilteredRecords] = useState<ProductRecord[]>([]);
+  const [imageUploads, setImageUploads] = useState<ProductRecord[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedBrand, setSelectedBrand] = useState('all');
+  const [selectedInputType, setSelectedInputType] = useState('all');
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(20);
+  const [activeTab, setActiveTab] = useState('overview');
 
-  const filteredProducts = productAnalytics.filter((product:any) => {
-    const matchesSearch = product.productName?.toLowerCase().includes(searchTerm?.toLowerCase()) ||
-                         product.brand?.toLowerCase().includes(searchTerm?.toLowerCase());
-    const matchesBrand = selectedBrand === 'all' || product.brand === selectedBrand;
-    const matchesCategory = selectedCategory === 'all' || product.category === selectedCategory;
-    
-    return matchesSearch && matchesBrand && matchesCategory;
-  });
+  useEffect(() => {
+    loadProductData();
+  }, []);
 
-  const brands = [...new Set(productAnalytics.map((product:any) => product.brand))];
-  const categories = [...new Set(productAnalytics.map((product:any) => product.category))];
+  useEffect(() => {
+    filterData();
+  }, [productRecords, searchTerm, selectedInputType, selectedCategory]);
 
-  const chartData = filteredProducts.slice(0, 10).map((product:any) => ({
-    name: product.productName.substring(0, 20) + '...',
-    success: product.successCount,
-    errors: product.errorCount,
-    price: product.price,
-  }));
+  const loadProductData = async () => {
+    setLoading(true);
+    try {
+      const records = await fetchProductRecords();
+      
+      // Filter out INITIAL REQUEST records for main analytics
+      const filteredRecords = records.filter(record => 
+        record.user_id && 
+        isRealUser(record.user_id) &&
+        !record.search_source?.includes('INITIAL REQUEST')
+      );
 
-  const getSuccessRate = (product: ProductAnalyticsType) => {
-    const total = product.successCount + product.errorCount;
-    return total > 0 ? (product.successCount / total) * 100 : 0;
+      // Get image uploads
+      const imageRecords = records.filter(record =>
+        record.user_id &&
+        isRealUser(record.user_id) &&
+        record.input_type === 'image_url' &&
+        record.image_path
+      );
+
+      setProductRecords(filteredRecords);
+      setImageUploads(imageRecords);
+    } catch (error) {
+      console.error('Error loading product data:', error);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const filterData = () => {
+    let filtered = productRecords;
+
+    if (searchTerm) {
+      filtered = filtered.filter(record =>
+        record.product_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        record.user_id?.includes(searchTerm) ||
+        record.Category?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    if (selectedInputType !== 'all') {
+      filtered = filtered.filter(record => record.input_type === selectedInputType);
+    }
+
+    if (selectedCategory !== 'all') {
+      filtered = filtered.filter(record => 
+        categorizeProduct(record.Category, record.product_name) === selectedCategory
+      );
+    }
+
+    setFilteredRecords(filtered);
+    setCurrentPage(1);
+  };
+
+  const paginatedRecords = filteredRecords.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  const totalPages = Math.ceil(filteredRecords.length / itemsPerPage);
+
+  // Analytics calculations
+  const userStats = React.useMemo(() => {
+    const userMap = new Map();
+    
+    filteredRecords.forEach(record => {
+      const userId = record.user_id;
+      if (!userMap.has(userId)) {
+        userMap.set(userId, {
+          userId: maskPhoneNumber(userId),
+          totalHits: 0,
+          categories: new Set(),
+          inputTypes: new Set(),
+          lastActivity: record.timestamp
+        });
+      }
+      
+      const user = userMap.get(userId);
+      user.totalHits++;
+      user.categories.add(categorizeProduct(record.Category, record.product_name));
+      user.inputTypes.add(record.input_type);
+      
+      if (new Date(record.timestamp) > new Date(user.lastActivity)) {
+        user.lastActivity = record.timestamp;
+      }
+    });
+
+    return Array.from(userMap.values()).sort((a, b) => b.totalHits - a.totalHits);
+  }, [filteredRecords]);
+
+  const inputTypeStats = React.useMemo(() => {
+    const stats = filteredRecords.reduce((acc, record) => {
+      const type = record.input_type || 'unknown';
+      if (!acc[type]) {
+        acc[type] = { count: 0, users: new Set() };
+      }
+      acc[type].count++;
+      acc[type].users.add(record.user_id);
+      return acc;
+    }, {} as Record<string, { count: number; users: Set<string> }>);
+
+    return Object.entries(stats).map(([type, data]) => ({
+      type,
+      count: data.count,
+      uniqueUsers: data.users.size,
+      color: getInputTypeColor(type)
+    }));
+  }, [filteredRecords]);
+
+  const categoryStats = React.useMemo(() => {
+    const stats = filteredRecords.reduce((acc, record) => {
+      const category = categorizeProduct(record.Category, record.product_name);
+      if (!acc[category]) {
+        acc[category] = { count: 0, users: new Set() };
+      }
+      acc[category].count++;
+      acc[category].users.add(record.user_id);
+      return acc;
+    }, {} as Record<string, { count: number; users: Set<string> }>);
+
+    return Object.entries(stats).map(([category, data]) => ({
+      category,
+      count: data.count,
+      uniqueUsers: data.users.size
+    })).sort((a, b) => b.count - a.count);
+  }, [filteredRecords]);
+
+  const getInputTypeColor = (type: string) => {
+    const colors = {
+      'image_url': '#10B981',
+      'amazon_url': '#F59E0B',
+      'text': '#3B82F6',
+      'flipkart_url': '#8B5CF6',
+      'unknown': '#6B7280'
+    };
+    return colors[type as keyof typeof colors] || '#6B7280';
+  };
+
+  const exportData = (format: 'csv' | 'json') => {
+    const dataToExport = format === 'csv' 
+      ? convertToCSV(filteredRecords)
+      : JSON.stringify(filteredRecords, null, 2);
+    
+    const blob = new Blob([dataToExport], { 
+      type: format === 'csv' ? 'text/csv' : 'application/json' 
+    });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = `product_analytics_${new Date().toISOString().split('T')[0]}.${format}`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  };
+
+  const convertToCSV = (data: any[]) => {
+    const headers = ['ID', 'User ID', 'Product Name', 'Category', 'Input Type', 'Timestamp', 'Device Info'];
+    const csvContent = [
+      headers.join(','),
+      ...data.map(row => [
+        row._id,
+        maskPhoneNumber(row.user_id),
+        `"${row.product_name}"`,
+        categorizeProduct(row.Category, row.product_name),
+        row.input_type,
+        row.timestamp,
+        `"${row.device_info}"`
+      ].join(','))
+    ].join('\n');
+    return csvContent;
+  };
+
+  const inputTypes = [...new Set(productRecords.map(r => r.input_type))];
+  const categories = [...new Set(productRecords.map(r => categorizeProduct(r.Category, r.product_name)))];
+
+  if (loading) {
+    return (
+      <div className="p-6 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <span className="ml-3 text-gray-600">Loading product analytics...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -44,137 +236,317 @@ const ProductAnalytics: React.FC<ProductAnalyticsProps> = ({ productAnalytics, o
         <h2 className="text-2xl font-bold text-gray-900">Product Analytics</h2>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => onExport('products', 'csv')}
+            onClick={() => exportData('csv')}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
             <Download className="w-4 h-4" />
             Export CSV
           </button>
+          <button
+            onClick={() => exportData('json')}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            Export JSON
+          </button>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Success vs Error Distribution</h3>
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="name" />
-            <YAxis />
-            <Tooltip />
-            <Bar dataKey="success" fill="#10B981" name="Success" />
-            <Bar dataKey="errors" fill="#EF4444" name="Errors" />
-          </BarChart>
-        </ResponsiveContainer>
+      {/* Tab Navigation */}
+      <div className="border-b border-gray-200">
+        <nav className="-mb-px flex space-x-8">
+          {[
+            { id: 'overview', name: 'Overview', icon: TrendingUp },
+            { id: 'users', name: 'User Analysis', icon: CheckCircle },
+            { id: 'images', name: 'Image Uploads', icon: Image }
+          ].map(tab => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === tab.id
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                {tab.name}
+              </button>
+            );
+          })}
+        </nav>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <div className="flex flex-wrap items-center gap-4 mb-6">
-          <div className="relative flex-1 min-w-64">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-            <input
-              type="text"
-              placeholder="Search products..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Total Records</p>
+              <p className="text-2xl font-bold text-gray-900">{filteredRecords.length.toLocaleString()}</p>
+            </div>
+            <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center">
+              <TrendingUp className="w-6 h-6 text-blue-600" />
+            </div>
           </div>
-          
-          <select
-            value={selectedBrand}
-            onChange={(e) => setSelectedBrand(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          >
-            <option value="all">All Brands</option>
-            {brands.map((brand:any) => (
-              <option key={brand} value={brand}>{brand}</option>
-            ))}
-          </select>
-
-          <select
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          >
-            <option value="all">All Categories</option>
-            {categories.map((category:any) => (
-              <option key={category} value={category}>{category}</option>
-            ))}
-          </select>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-200">
-                <th className="text-left py-3 px-4 font-medium text-gray-900">Product</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-900">Brand</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-900">Category</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-900">Price</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-900">Success Rate</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-900">Detection</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-900">Source</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredProducts.map((product:any, index:any) => (
-                <tr key={product.id} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-                  <td className="py-3 px-4">
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">{product.productName}</p>
-                      <p className="text-xs text-gray-600">{format(new Date(product.timestamp), 'MMM dd, yyyy')}</p>
-                    </div>
-                  </td>
-                  <td className="py-3 px-4 text-sm text-gray-900">
-                    {product.brand}
-                  </td>
-                  <td className="py-3 px-4 text-sm text-gray-900">
-                    {product.category}
-                  </td>
-                  <td className="py-3 px-4 text-sm text-gray-900">
-                    ₹{product.price.toLocaleString()}
-                  </td>
-                  <td className="py-3 px-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-16 bg-gray-200 rounded-full h-2">
-                        <div
-                          className="bg-green-500 h-2 rounded-full"
-                          style={{ width: `${getSuccessRate(product)}%` }}
-                        />
-                      </div>
-                      <span className="text-sm text-gray-600">
-                        {getSuccessRate(product).toFixed(1)}%
-                      </span>
-                    </div>
-                  </td>
-                  <td className="py-3 px-4">
-                    <div className="flex items-center gap-2">
-                      {product.imageDetected && (
-                        <CheckCircle className="w-4 h-4 text-green-600" />
-                      )}
-                      {product.brandDetected && (
-                        <CheckCircle className="w-4 h-4 text-blue-600" />
-                      )}
-                      {!product.imageDetected && !product.brandDetected && (
-                        <AlertCircle className="w-4 h-4 text-red-600" />
-                      )}
-                    </div>
-                  </td>
-                  <td className="py-3 px-4 text-sm text-gray-900">
-                    {product.searchSource}
-                  </td>
-                </tr>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Unique Users</p>
+              <p className="text-2xl font-bold text-gray-900">{userStats.length.toLocaleString()}</p>
+            </div>
+            <div className="w-12 h-12 bg-green-50 rounded-lg flex items-center justify-center">
+              <CheckCircle className="w-6 h-6 text-green-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Image Uploads</p>
+              <p className="text-2xl font-bold text-gray-900">{imageUploads.length.toLocaleString()}</p>
+            </div>
+            <div className="w-12 h-12 bg-yellow-50 rounded-lg flex items-center justify-center">
+              <Image className="w-6 h-6 text-yellow-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Categories</p>
+              <p className="text-2xl font-bold text-gray-900">{categories.length}</p>
+            </div>
+            <div className="w-12 h-12 bg-purple-50 rounded-lg flex items-center justify-center">
+              <Filter className="w-6 h-6 text-purple-600" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Input Type Distribution</h3>
+          <ResponsiveContainer width="100%" height={300}>
+            <PieChart>
+              <Pie
+                data={inputTypeStats}
+                cx="50%"
+                cy="50%"
+                labelLine={false}
+                label={({ type, percent }) => `${type} ${(percent * 100).toFixed(0)}%`}
+                outerRadius={80}
+                fill="#8884d8"
+                dataKey="count"
+              >
+                {inputTypeStats.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} />
+                ))}
+              </Pie>
+              <Tooltip />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Top Categories</h3>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={categoryStats.slice(0, 8)}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="category" />
+              <YAxis />
+              <Tooltip />
+              <Bar dataKey="count" fill="#3B82F6" name="Records" />
+              <Bar dataKey="uniqueUsers" fill="#10B981" name="Users" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === 'overview' && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="flex flex-wrap items-center gap-4 mb-6">
+            <div className="relative flex-1 min-w-64">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <input
+                type="text"
+                placeholder="Search products..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            
+            <select
+              value={selectedInputType}
+              onChange={(e) => setSelectedInputType(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="all">All Input Types</option>
+              {inputTypes.map(type => (
+                <option key={type} value={type}>{type}</option>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </select>
 
-        {filteredProducts.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-gray-500">No products found matching your criteria.</p>
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="all">All Categories</option>
+              {categories.map(category => (
+                <option key={category} value={category}>{category}</option>
+              ))}
+            </select>
           </div>
-        )}
-      </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="text-left py-3 px-4 font-medium text-gray-900">Product</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900">User ID</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900">Category</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900">Input Type</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900">Timestamp</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900">Device</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedRecords.map((record, index) => (
+                  <tr key={record._id} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+                    <td className="py-3 px-4">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{record.product_name}</p>
+                        <p className="text-xs text-gray-600">{record._id}</p>
+                      </div>
+                    </td>
+                    <td className="py-3 px-4 text-sm text-gray-900 font-mono">
+                      {maskPhoneNumber(record.user_id)}
+                    </td>
+                    <td className="py-3 px-4 text-sm text-gray-900">
+                      {categorizeProduct(record.Category, record.product_name)}
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="flex items-center gap-1">
+                        {record.input_type === 'image_url' && <Image className="w-4 h-4" />}
+                        {record.input_type === 'amazon_url' && <Link className="w-4 h-4" />}
+                        {record.input_type === 'text' && <Type className="w-4 h-4" />}
+                        <span className="text-sm text-gray-900">{record.input_type}</span>
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-sm text-gray-900">
+                      {format(new Date(record.timestamp), 'MMM dd, yyyy HH:mm')}
+                    </td>
+                    <td className="py-3 px-4 text-sm text-gray-900">
+                      {record.device_info}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-6">
+              <div className="text-sm text-gray-700">
+                Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredRecords.length)} of {filteredRecords.length} results
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1 border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  Previous
+                </button>
+                <span className="px-3 py-1 text-sm text-gray-700">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1 border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'users' && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">User Analysis</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="text-left py-3 px-4 font-medium text-gray-900">User ID</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900">Total Hits</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900">Categories</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900">Input Types</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900">Last Activity</th>
+                </tr>
+              </thead>
+              <tbody>
+                {userStats.slice(0, 50).map((user, index) => (
+                  <tr key={user.userId} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+                    <td className="py-3 px-4 text-sm text-gray-900 font-mono">{user.userId}</td>
+                    <td className="py-3 px-4 text-sm text-gray-900">{user.totalHits}</td>
+                    <td className="py-3 px-4 text-sm text-gray-900">{user.categories.size}</td>
+                    <td className="py-3 px-4 text-sm text-gray-900">{user.inputTypes.size}</td>
+                    <td className="py-3 px-4 text-sm text-gray-900">
+                      {format(new Date(user.lastActivity), 'MMM dd, yyyy HH:mm')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'images' && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Image Uploads</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {imageUploads.slice(0, 20).map((record) => (
+              <div key={record._id} className="border border-gray-200 rounded-lg p-4">
+                <div className="aspect-square bg-gray-100 rounded-lg mb-3 flex items-center justify-center">
+                  {record.image_path ? (
+                    <img 
+                      src={record.image_path} 
+                      alt={record.product_name}
+                      className="w-full h-full object-cover rounded-lg"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = 'none';
+                        (e.target as HTMLImageElement).nextElementSibling!.classList.remove('hidden');
+                      }}
+                    />
+                  ) : null}
+                  <div className="hidden text-gray-400">
+                    <Image className="w-8 h-8" />
+                  </div>
+                </div>
+                <p className="text-sm font-medium text-gray-900 truncate">{record.product_name}</p>
+                <p className="text-xs text-gray-600">{maskPhoneNumber(record.user_id)}</p>
+                <p className="text-xs text-gray-500">{format(new Date(record.timestamp), 'MMM dd, yyyy')}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
