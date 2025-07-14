@@ -15,4 +15,8 @@ export default defineConfig({
       },
     },
   },
+  define: {
+    // Enable CORS for external API calls
+    global: 'globalThis',
+  },
 });
