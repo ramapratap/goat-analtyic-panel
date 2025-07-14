@@ -33,28 +33,65 @@ const ImagePreviewModal: React.FC<{
 }> = ({ isOpen, onClose, imageUrl, productName }) => {
   if (!isOpen) return null;
 
+  // Close modal on escape key
+  React.useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleEscape);
+      // Prevent body scroll when modal is open
+      document.body.style.overflow = 'hidden';
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen, onClose]);
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
-        <div className="flex items-center justify-between p-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">{productName}</h3>
+    <div 
+      className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-2 sm:p-4 z-50"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-white rounded-lg sm:rounded-xl w-full max-w-sm sm:max-w-2xl md:max-w-4xl max-h-[95vh] sm:max-h-[90vh] overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between p-3 sm:p-4 border-b border-gray-200">
+          <h3 className="text-base sm:text-lg font-semibold text-gray-900 truncate pr-2">
+            {productName}
+          </h3>
           <button
             onClick={onClose}
-            className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
+            className="flex-shrink-0 p-1.5 sm:p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
         </div>
         
-        <div className="p-4 flex items-center justify-center">
+        <div className="p-2 sm:p-4 flex items-center justify-center bg-gray-50">
           <img 
             src={imageUrl} 
             alt={productName}
-            className="max-w-full max-h-[70vh] object-contain rounded-lg"
+            className="max-w-full max-h-[60vh] sm:max-h-[70vh] object-contain rounded-lg shadow-lg"
             onError={(e) => {
-              (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgdmlld0JveD0iMCAwIDIwMCAyMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0xMDAgNzBMMTMwIDEwMEgxMTBWMTMwSDkwVjEwMEg3MEwxMDAgNzBaIiBmaWxsPSIjOUI5Qjk5Ii8+Cjx0ZXh0IHg9IjEwMCIgeT0iMTUwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjOUI5Qjk5IiBmb250LXNpemU9IjEyIj5JbWFnZSBub3QgZm91bmQ8L3RleHQ+Cjwvc3ZnPg==';
+              const target = e.target as HTMLImageElement;
+              target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgdmlld0JveD0iMCAwIDIwMCAyMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0xMDAgNzBMMTMwIDEwMEgxMTBWMTMwSDkwVjEwMEg3MEwxMDAgNzBaIiBmaWxsPSIjOUI5Qjk5Ii8+Cjx0ZXh0IHg9IjEwMCIgeT0iMTUwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjOUI5Qjk5IiBmb250LXNpemU9IjEyIj5JbWFnZSBub3QgZm91bmQ8L3RleHQ+Cjwvc3ZnPg==';
+              target.className = "max-w-full max-h-[60vh] sm:max-h-[70vh] object-contain rounded-lg opacity-50";
             }}
           />
+        </div>
+        
+        {/* Mobile-friendly close instruction */}
+        <div className="p-2 sm:p-3 bg-gray-50 border-t border-gray-200 text-center">
+          <p className="text-xs sm:text-sm text-gray-500">
+            Tap outside or press ESC to close
+          </p>
         </div>
       </div>
     </div>
@@ -676,10 +713,10 @@ const ProductAnalytics: React.FC = () => {
       {activeTab === 'images' && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Image Uploads with Preview</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
             {paginatedImageUploads.map((record) => (
-              <div key={extractId(record._id)} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                <div className="aspect-square bg-gray-100 rounded-lg mb-3 flex items-center justify-center relative overflow-hidden">
+              <div key={extractId(record._id)} className="border border-gray-200 rounded-lg p-2 sm:p-3 hover:shadow-md transition-shadow">
+                <div className="aspect-square bg-gray-100 rounded-lg mb-2 flex items-center justify-center relative overflow-hidden group">
                   {record.image_path ? (
                     <>
                       <img 
@@ -697,11 +734,11 @@ const ProductAnalytics: React.FC = () => {
                           const parent = target.parentElement;
                           if (parent) {
                             parent.innerHTML = `
-                              <div class="flex flex-col items-center justify-center text-gray-400 h-full">
+                              <div class="flex flex-col items-center justify-center text-gray-400 h-full p-2">
                                 <svg class="w-8 h-8 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
                                 </svg>
-                                <span class="text-xs">Image not found</span>
+                                <span class="text-xs text-center">Image not found</span>
                               </div>
                             `;
                           }
@@ -710,24 +747,24 @@ const ProductAnalytics: React.FC = () => {
                       <button
                         onClick={() => setPreviewImage({
                           isOpen: true,
-                          imageUrl: record.image_path,
+                          imageUrl: record.price,
                           productName: safeRender(record.product_name)
                         })}
-                        className="absolute top-2 right-2 p-1 bg-black bg-opacity-50 text-white rounded-full hover:bg-opacity-70 transition-all"
+                        className="absolute top-1 right-1 sm:top-2 sm:right-2 p-1 bg-black bg-opacity-50 text-white rounded-full hover:bg-opacity-70 transition-all opacity-0 group-hover:opacity-100"
                       >
-                        <Eye className="w-4 h-4" />
+                        <Eye className="w-3 h-3 sm:w-4 sm:h-4" />
                       </button>
                     </>
                   ) : (
                     <div className="flex flex-col items-center justify-center text-gray-400">
-                      <Image className="w-8 h-8 mb-2" />
-                      <span className="text-xs">No image</span>
+                      <Image className="w-6 h-6 sm:w-8 sm:h-8 mb-1 sm:mb-2" />
+                      <span className="text-xs text-center">No image</span>
                     </div>
                   )}
                 </div>
-                <p className="text-sm font-medium text-gray-900 truncate">{safeRender(record.product_name)}</p>
-                <p className="text-xs text-gray-600">{maskPhoneNumber(safeRender(record.user_id))}</p>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs sm:text-sm font-medium text-gray-900 truncate mb-1">{safeRender(record.product_name)}</p>
+                <p className="text-xs text-gray-600 truncate">{maskPhoneNumber(safeRender(record.user_id))}</p>
+                <p className="text-xs text-gray-500 truncate">
                   {record.timestamp ? format(new Date(record.timestamp), 'MMM dd, yyyy') : 'N/A'}
                 </p>
               </div>
@@ -736,28 +773,28 @@ const ProductAnalytics: React.FC = () => {
 
           {/* Image Uploads Pagination */}
           {imageTotalPages > 1 && (
-            <div className="flex items-center justify-between mt-6">
-              <div className="text-sm text-gray-700">
+            <div className="flex flex-col sm:flex-row items-center justify-between mt-6 gap-4">
+              <div className="text-sm text-gray-700 order-2 sm:order-1">
                 Showing {((imageCurrentPage - 1) * imageItemsPerPage) + 1} to {Math.min(imageCurrentPage * imageItemsPerPage, imageUploads.length)} of {imageUploads.length} images
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 order-1 sm:order-2">
                 <button
                   onClick={() => setImageCurrentPage(prev => Math.max(prev - 1, 1))}
                   disabled={imageCurrentPage === 1}
-                  className="flex items-center gap-1 px-3 py-1 border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                  className="flex items-center gap-1 px-2 sm:px-3 py-1 text-sm border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
                 >
                   <ChevronLeft className="w-4 h-4" />
-                  Previous
+                  <span className="hidden sm:inline">Previous</span>
                 </button>
-                <span className="px-3 py-1 text-sm text-gray-700">
+                <span className="px-2 sm:px-3 py-1 text-sm text-gray-700 whitespace-nowrap">
                   Page {imageCurrentPage} of {imageTotalPages}
                 </span>
                 <button
                   onClick={() => setImageCurrentPage(prev => Math.min(prev + 1, imageTotalPages))}
                   disabled={imageCurrentPage === imageTotalPages}
-                  className="flex items-center gap-1 px-3 py-1 border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                  className="flex items-center gap-1 px-2 sm:px-3 py-1 text-sm border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
                 >
-                  Next
+                  <span className="hidden sm:inline">Next</span>
                   <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
