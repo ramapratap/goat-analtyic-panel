@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Activity, ShoppingCart, TrendingUp, AlertCircle, QrCode, RefreshCw, Ticket, Smartphone, Monitor, DollarSign, Target, Award, ExternalLink, X } from 'lucide-react';
+import { Users, Activity, ShoppingCart, TrendingUp, AlertCircle, QrCode, RefreshCw, Ticket, Smartphone, Monitor, IndianRupee, Target, Award, ExternalLink, X } from 'lucide-react';
 import { DashboardStats } from '../../types';
 import StatsCard from './StatsCard';
 import { 
@@ -351,33 +351,8 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-gray-900">Analytics Dashboard</h2>
         <div className="flex items-center gap-4">
-          <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <QrCode className="w-5 h-5 text-blue-600" />
-                <div>
-                  <p className="text-sm font-medium text-gray-700">QR Scans</p>
-                  <p className="text-lg font-bold text-gray-900">
-                    {realTimeStats.qrScanCount.toLocaleString()}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={onRefreshQrScans}
-                className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"
-                title="Refresh QR scan count"
-              >
-                <RefreshCw className="w-4 h-4" />
-              </button>
-            </div>
-            <p className="text-xs text-gray-500 mt-1">
-              Live count from QR system
-            </p>
-          </div>
-          
-          <div className="text-sm text-gray-500">
-            Last updated: {new Date().toLocaleString()}
-          </div>
+        
+         
         </div>
       </div>
 
@@ -428,7 +403,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
-              <DollarSign className="w-5 h-5 text-yellow-600" />
+              <IndianRupee className="w-5 h-5 text-yellow-600" />
             </div>
             <div>
               <h3 className="font-semibold text-gray-900">Flipkart Savings</h3>
@@ -437,7 +412,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
                 className="text-2xl font-bold text-yellow-600 hover:text-yellow-700 transition-colors cursor-pointer flex items-center gap-1"
               >
                 ₹{realTimeStats.flipkartSavings.toLocaleString()}
-                <ExternalLink className="w-4 h-4" />
+                {/* <ExternalLink className="w-4 h-4" /> */}
               </button>
             </div>
           </div>
@@ -446,10 +421,10 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
           </p>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        {/* <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
-              <DollarSign className="w-5 h-5 text-orange-600" />
+              <IndianRupee className="w-5 h-5 text-orange-600" />
             </div>
             <div>
               <h3 className="font-semibold text-gray-900">Amazon Savings</h3>
@@ -465,9 +440,9 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
           <p className="text-sm text-gray-600">
             {realTimeStats.amazonWins} times Amazon was cheaper
           </p>
-        </div>
+        </div> */}
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        {/* <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
               <Award className="w-5 h-5 text-green-600" />
@@ -486,7 +461,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
           <p className="text-sm text-gray-600">
             Combined platform savings
           </p>
-        </div>
+        </div> */}
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div className="flex items-center gap-3 mb-4">
@@ -502,6 +477,34 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
             Across {realTimeStats.totalProducts} products
           </p>
         </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <QrCode className="w-10 h-10 text-blue-600" />
+                <div>
+                  <p className="text-lg font-bold text-gray-700">QR Scans</p>
+                  <p className="text-2xl font-bold text-green-900">
+                    {realTimeStats.qrScanCount.toLocaleString()}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={onRefreshQrScans}
+                className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"
+                title="Refresh QR scan count"
+              >
+                <RefreshCw className="w-7 h-7" />
+              </button>
+            </div>
+            
+            <p className="text-sm text-gray-500 mt-3">
+              Live count from QR system
+            </p>
+             <div className="text-sm text-gray-500 mt-2">
+            Last updated: {new Date().toLocaleString()}</div>
+          </div>
+          
       </div>
 
       {/* Enhanced Charts */}
@@ -515,8 +518,8 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
               <YAxis />
               <Tooltip 
                 formatter={(value, name) => [
-                  name === 'value' ? `${value} wins` : `₹${value.toLocaleString()}`,
-                  name === 'value' ? 'Wins' : 'Savings'
+                  name === 'value' ? `wins` : `${value}`,
+                  name === 'Savings' ? 'Savings' : 'Wins'
                 ]}
               />
               <Bar dataKey="value" fill="#3B82F6" name="Wins" />
@@ -609,7 +612,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
           <div className="bg-yellow-50 rounded-lg p-4">
             <h4 className="font-medium text-yellow-900 mb-2">Platform Savings</h4>
             <p className="text-sm text-yellow-700">
-              Total savings: ₹{realTimeStats.totalSavings.toLocaleString()} across platforms
+              Total savings: ₹{realTimeStats.flipkartSavings.toLocaleString()} across platforms
             </p>
           </div>
           

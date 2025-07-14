@@ -610,7 +610,7 @@ const ProductAnalytics: React.FC = () => {
                     <td className="py-3 px-4 text-sm text-gray-900">{user.totalHits}</td>
                     <td className="py-3 px-4">
                       <div className="flex flex-wrap gap-1">
-                        {Array.from(user.categories.entries()).map(([category, count]) => (
+                        {Array.from(user.categories.entries()).map(([category, count]:any) => (
                           <span
                             key={category}
                             className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full"
@@ -622,7 +622,7 @@ const ProductAnalytics: React.FC = () => {
                     </td>
                     <td className="py-3 px-4">
                       <div className="flex flex-wrap gap-1">
-                        {Array.from(user.inputTypes.entries()).map(([type, count]) => (
+                        {Array.from(user.inputTypes.entries()).map(([type, count]:any) => (
                           <span
                             key={type}
                             className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full"
@@ -683,12 +683,12 @@ const ProductAnalytics: React.FC = () => {
                   {record.image_path ? (
                     <>
                       <img 
-                        src={record.image_path} 
+                        src={record.price} 
                         alt={safeRender(record.product_name)}
                         className="w-full h-full object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                         onClick={() => setPreviewImage({
                           isOpen: true,
-                          imageUrl: record.image_path,
+                          imageUrl: record.price,
                           productName: safeRender(record.product_name)
                         })}
                         onError={(e) => {
