@@ -5,25 +5,23 @@ import Sidebar from './components/Layout/Sidebar';
 import DashboardOverview from './components/Dashboard/DashboardOverview';
 import UserFlowAnalytics from './components/Analytics/UserFlowAnalytics';
 import ProductAnalytics from './components/Analytics/ProductAnalytics';
-import ProductFeedback from './components/Analytics/ProductFeedback';
-import CouponAnalytics from './components/Analytics/CouponAnalytics';
 import UserManagement from './components/UserManagement/UserManagement';
 import FilterPanel from './components/FilterPanel';
 import { useAnalytics } from './hooks/useAnalytics';
 import { FilterOptions } from './types';
-import { fetchQRScanCount } from './services/externalApi';
+import { fetchQRScanData } from './services/externalApi';
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [qrScanData, setQrScanData] = useState({
-    totalScans: 1247,
-    todayScans: 89,
+    totalScans: 0,
+    todayScans: 0,
     lastUpdated: new Date().toISOString()
   });
   const [filters, setFilters] = useState<FilterOptions>({
     dateRange: {
-      start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      start: '2025-07-10', // Fixed date filter from July 10, 2025
       end: new Date().toISOString().split('T')[0],
     },
   });
@@ -32,8 +30,6 @@ const Dashboard: React.FC = () => {
     stats, 
     userFlows, 
     productAnalytics, 
-    couponAnalytics, 
-    productFeedback,
     loadingStates,
     isStatsLoaded,
     error, 
@@ -42,12 +38,17 @@ const Dashboard: React.FC = () => {
 
   const handleRefreshQrScans = async () => {
     try {
-      const data = await fetchQRScanCount();
-      setQrScanData({
-        totalScans: data.qr_scan_count,
-        todayScans: Math.floor(data.qr_scan_count * 0.05),
-        lastUpdated: new Date().toISOString()
-      });
+      const data = await fetchQRScanData();
+      if (data.status && data.data?.qrData) {
+        const qrData = data.data.qrData;
+        const todayScans = Object.values(qrData.analytics?.timeStats?.dailyScans || {}).pop() as number || 0;
+        
+        setQrScanData({
+          totalScans: qrData.qr_scan_count,
+          todayScans,
+          lastUpdated: new Date().toISOString()
+        });
+      }
     } catch (error) {
       console.error('Failed to refresh QR scans:', error);
     }
@@ -87,32 +88,6 @@ const Dashboard: React.FC = () => {
             )}
           </div>
         );
-      case 'product-feedback':
-        return (
-          <div>
-            {loadingStates.productFeedback ? (
-              <div className="p-6 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                <span className="ml-3 text-gray-600">Loading product feedback...</span>
-              </div>
-            ) : (
-              <ProductFeedback onExport={exportData} />
-            )}
-          </div>
-        );
-      case 'coupons':
-        return (
-          <div>
-            {loadingStates.couponAnalytics && couponAnalytics.length === 0 ? (
-              <div className="p-6 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                <span className="ml-3 text-gray-600">Loading coupon analytics...</span>
-              </div>
-            ) : (
-              <CouponAnalytics couponAnalytics={couponAnalytics} onExport={exportData} />
-            )}
-          </div>
-        );
       case 'user-flows':
         return (
           <div>
@@ -140,7 +115,7 @@ const Dashboard: React.FC = () => {
         onTabChange={setActiveTab}
       />
       <div className="flex-1 overflow-auto">
-        {(activeTab === 'dashboard' || activeTab === 'user-flows' || activeTab === 'products' || activeTab === 'product-feedback' || activeTab === 'coupons') && (
+        {(activeTab === 'dashboard' || activeTab === 'user-flows' || activeTab === 'products') && (
           <div className="p-6 pb-0">
             <FilterPanel filters={filters} onFiltersChange={setFilters} />
           </div>

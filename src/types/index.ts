@@ -1,4 +1,4 @@
-// src/types/index.ts - Updated Types
+// src/types/index.ts - Updated Types for Actual API Integration
 export interface FilterOptions {
   dateRange: {
     start: string;
@@ -46,8 +46,6 @@ export interface UserFlow {
 }
 
 export interface ProductAnalytics {
-  errorCount: any;
-  successCount: any;
   _id: string;
   user_id: string;
   productName: string;
@@ -56,44 +54,14 @@ export interface ProductAnalytics {
   productPrice?: number;
   searchSource?: string;
   timestamp: string;
-}
-
-export interface CouponAnalytics {
-  id: number;
-  category: string;
-  brand: string;
-  model: string;
-  totalCoupons: number;
-  usedCoupons: number;
-  usageRate: number;
-  totalValue: number;
-  avgDiscount: number;
-  lastUsed?: string;
-  couponTypes: {
-    [key: string]: {
-      value: number;
-      count: number;
-      used: number;
-      usageRate: number;
-    };
-  };
-}
-
-export interface ProductFeedback {
-  id: string;
-  productName: string;
-  rating: number;
-  timestamp: string;
-  userId: string;
-}
-
-export interface CouponLink {
-  _id: string;
-  id: number;
-  Coupon_Link: string;
-  Coupon_type: string;
-  is_used: boolean;
-  timestamp: string;
+  successCount: number;
+  errorCount: number;
+  platform?: string;
+  savings?: string;
+  category?: string;
+  exclusive?: string | null;
+  couponCode?: string | null;
+  deviceInfo?: string;
 }
 
 export interface User {
@@ -121,7 +89,7 @@ export interface ApiError {
 
 export interface ExportOptions {
   format: 'json' | 'csv';
-  type: 'products' | 'coupons' | 'coupon-links' | 'user-flows' | 'product-feedback';
+  type: 'products' | 'user-flows';
   dateRange?: {
     start: string;
     end: string;
@@ -146,6 +114,89 @@ export interface ApiResponse<T> {
   error?: string;
 }
 
+// QR Scan Data Types
+export interface QRScanData {
+  status: boolean;
+  data: {
+    qrData: {
+      qr_scan_count: number;
+      analytics: {
+        deviceBreakdown: {
+          mobile: number;
+          tablet: number;
+          desktop: number;
+        };
+        browserBreakdown: {
+          chrome: number;
+          firefox: number;
+          safari: number;
+          edge: number;
+          other: number;
+        };
+        osBreakdown: {
+          windows: number;
+          macos: number;
+          linux: number;
+          ios: number;
+          android: number;
+          other: number;
+        };
+        timeStats: {
+          hourlyScans: Record<string, number>;
+          dailyScans: Record<string, number>;
+          monthlyScans: Record<string, number>;
+        };
+        locationBreakdown: Record<string, number>;
+        firstScan: string;
+        lastScan: string;
+      };
+      qr_name: string;
+      qr_url: string;
+      first_created: string;
+      last_updated: string;
+    };
+  };
+  msg: string;
+}
+
+// Product Record Types
+export interface ProductRecord {
+  _id: string;
+  product_name: string;
+  price: string; // Contains user's uploaded image URL
+  image_path: string;
+  timestamp: string;
+  device_info: string;
+  logo_detected: string;
+  search_source: string; // Contains amazon_name, flipkart_name, concise_name, etc.
+  amazon_price: string;
+  flipkart_price: {
+    name: string;
+    price: string;
+    wow_price: string;
+    link: string;
+  } | string;
+  user_id: string;
+  input_type: string;
+  flipkart_product_name: string;
+  Category: string;
+  exclusive: string | null;
+  hero_deal: string | null;
+  coupon_code: string | null;
+}
+
+// Search Source Info
+export interface SearchSourceInfo {
+  amazonName: string;
+  flipkartName: string;
+  conciseName: string;
+  inputType: string;
+  category: string;
+  platform: string;
+  savings: string;
+  status: string;
+}
+
 // Component prop types
 export interface DashboardOverviewProps {
   stats: DashboardStats | null;
@@ -162,15 +213,6 @@ export interface ProductAnalyticsProps {
   onExport: (type: string, format?: string) => Promise<void>;
 }
 
-export interface CouponAnalyticsProps {
-  couponAnalytics: CouponAnalytics[];
-  onExport: (type: string, format?: string) => Promise<void>;
-}
-
-export interface ProductFeedbackProps {
-  onExport: (type: string, format?: string) => Promise<void>;
-}
-
 export interface SidebarProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
@@ -179,30 +221,6 @@ export interface SidebarProps {
 export interface FilterPanelProps {
   filters: FilterOptions;
   onFiltersChange: (filters: FilterOptions) => void;
-}
-
-// Database collection interfaces
-export interface CouponData {
-  _id: string;
-  id: number;
-  Category: string;
-  Brand: string;
-  Model: string;
-  Coupon_Value_low: string;
-  Coupon_Count_low: string;
-  Coupon_Value_mid: string;
-  Coupon_Count_mid: string;
-  Coupon_Value_high: string;
-  Coupon_Count_high: string;
-  Coupon_Value_pro: string;
-  Coupon_Count_pro: string;
-  Coupon_Value_extreme: string;
-  Coupon_Count_extreme: string;
-}
-
-export interface QRScanData {
-  qr_scan_count: number;
-  timestamp?: string;
 }
 
 // Chart data interfaces
@@ -236,22 +254,6 @@ export interface BrandPerformance {
 }
 
 // Analytics summary interfaces
-export interface CouponSummary {
-  totalCoupons: number;
-  totalUsed: number;
-  totalValue: number;
-  averageUsageRate: number;
-  totalActiveCoupons: number;
-  typeDistribution: Record<string, {
-    total: number;
-    used: number;
-    value: number;
-    usageRate: number;
-  }>;
-  topCategories: Record<string, CategoryPerformance>;
-  topBrands: Record<string, BrandPerformance>;
-}
-
 export interface ProductSummary {
   totalProducts: number;
   totalValue: number;
@@ -268,4 +270,99 @@ export interface UserSummary {
   totalSessions: number;
   conversionRate: number;
   topSources: { source: string; count: number }[];
+}
+
+// Device Analytics
+export interface DeviceAnalytics {
+  name: string;
+  value: number;
+  color: string;
+}
+
+// Daily Scan Trends
+export interface DailyScanTrend {
+  date: string;
+  scans: number;
+}
+
+// Platform Performance
+export interface PlatformPerformance {
+  platform: string;
+  count: number;
+  successRate: number;
+  totalSavings: number;
+  avgSavings: number;
+}
+
+// Input Type Analytics
+export interface InputTypeAnalytics {
+  type: string;
+  count: number;
+  successRate: number;
+  avgResponseTime?: number;
+}
+
+// Category Analytics
+export interface CategoryAnalytics {
+  category: string;
+  count: number;
+  successRate: number;
+  totalSavings: number;
+  avgPrice: number;
+  topBrands: string[];
+}
+
+// Error Analytics
+export interface ErrorAnalytics {
+  errorType: string;
+  count: number;
+  percentage: number;
+  trend: 'up' | 'down' | 'stable';
+}
+
+// Performance Metrics
+export interface PerformanceMetrics {
+  responseTime: number;
+  successRate: number;
+  errorRate: number;
+  throughput: number;
+  availability: number;
+}
+
+// User Engagement
+export interface UserEngagement {
+  dailyActiveUsers: number;
+  weeklyActiveUsers: number;
+  monthlyActiveUsers: number;
+  avgSessionsPerUser: number;
+  avgSessionDuration: string;
+  retentionRate: number;
+}
+
+// Export types
+export type ExportType = 'products' | 'user-flows';
+export type ExportFormat = 'json' | 'csv' | 'xlsx';
+
+// Loading states
+export interface LoadingStates {
+  dashboard: boolean;
+  userFlows: boolean;
+  productAnalytics: boolean;
+}
+
+// Error types
+export interface ErrorState {
+  hasError: boolean;
+  message: string;
+  code?: string;
+  timestamp: string;
+}
+
+// Success metrics
+export interface SuccessMetrics {
+  totalSuccessfulRequests: number;
+  successRate: number;
+  avgResponseTime: number;
+  peakHour: string;
+  bestPerformingCategory: string;
 }

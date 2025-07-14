@@ -4,7 +4,6 @@ import {
   BarChart3, 
   Users, 
   ShoppingCart, 
-  Ticket, 
   TrendingUp, 
   Settings, 
   LogOut, 
@@ -25,8 +24,6 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange }) => {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: BarChart3, roles: ['admin', 'editor', 'viewer'] },
     { id: 'products', label: 'Product Analytics', icon: ShoppingCart, roles: ['admin', 'editor', 'viewer'] },
-    { id: 'product-feedback', label: 'Product Feedback', icon: TrendingUp, roles: ['admin', 'editor', 'viewer'] },
-    { id: 'coupons', label: 'Coupon Analytics', icon: Ticket, roles: ['admin', 'editor', 'viewer'] },
     { id: 'user-flows', label: 'User Flows', icon: TrendingUp, roles: ['admin', 'editor', 'viewer'] },
     { id: 'users', label: 'User Management', icon: Users, roles: ['admin'] },
     { id: 'settings', label: 'Settings', icon: Settings, roles: ['admin', 'editor'] },
@@ -53,7 +50,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange }) => {
   return (
     <div className="w-64 bg-white border-r border-gray-200 h-screen flex flex-col">
       <div className="p-6 border-b border-gray-200">
-        <h1 className="text-xl font-bold text-gray-900">Analytics Hub</h1>
+        <h1 className="text-xl font-bold text-gray-900">GOAT Analytics</h1>
         <div className="mt-3 flex items-center gap-2">
           <div className={clsx('px-2 py-1 rounded-full flex items-center gap-1 text-xs font-medium', getRoleColor(user?.role || ''))}>
             {getRoleIcon(user?.role || '')}
