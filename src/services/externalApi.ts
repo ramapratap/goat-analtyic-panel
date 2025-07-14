@@ -207,7 +207,7 @@ export const fetchProductRecords = async (): Promise<ProductRecord[]> => {
   }
 };
 
-// Enhanced search source parsing
+// Enhanced search source parsing with better savings extraction
 export const parseSearchSource = (searchSource: string) => {
   const info = {
     amazonName: '',
@@ -223,7 +223,9 @@ export const parseSearchSource = (searchSource: string) => {
     isHardline: false,
     isSoftline: false,
     isFlipkartCheaper: false,
-    isAmazonCheaper: false
+    isAmazonCheaper: false,
+    amazonPrice: '',
+    flipkartPrice: ''
   };
 
   if (!searchSource) return info;
@@ -263,16 +265,23 @@ export const parseSearchSource = (searchSource: string) => {
       info.isAmazonCheaper = true;
     }
 
-    // Extract best platform and savings
+    // FIXED: Better savings extraction with validation
     const bestMatch = searchSource.match(/Best:\s*([^-]+)\s*-\s*Savings:\s*(₹[\d,]+)/);
     if (bestMatch) {
       info.bestPlatform = bestMatch[1].trim().toLowerCase();
       info.savings = bestMatch[2].trim();
       
-      // Extract numeric savings amount
+      // Extract numeric savings amount with better validation
       const savingsNumMatch = bestMatch[2].match(/₹([\d,]+)/);
       if (savingsNumMatch) {
-        info.savingsAmount = parseInt(savingsNumMatch[1].replace(/,/g, ''));
+        const savingsValue = parseInt(savingsNumMatch[1].replace(/,/g, ''));
+        // Validate savings amount (should be reasonable, not in billions)
+        if (savingsValue > 0 && savingsValue < 100000) { // Max ₹1 lakh per product
+          info.savingsAmount = savingsValue;
+        } else {
+          console.warn(`Unrealistic savings amount: ₹${savingsValue} for product`);
+          info.savingsAmount = 0;
+        }
       }
     }
 
@@ -429,12 +438,20 @@ export const getDailyScanTrends = (qrData: QRScanData) => {
   })).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 };
 
-// Calculate platform savings
+// FIXED: Calculate platform savings with validation
 export const calculatePlatformSavings = (records: ProductRecord[]) => {
   let flipkartSavings = 0;
   let amazonSavings = 0;
   let flipkartWins = 0;
   let amazonWins = 0;
+  const savingsDetails: Array<{
+    productName: string;
+    platform: string;
+    savings: number;
+    flipkartPrice: string;
+    amazonPrice: string;
+    productLink: string;
+  }> = [];
 
   records.forEach(record => {
     const sourceInfo = parseSearchSource(record.search_source);
@@ -442,9 +459,27 @@ export const calculatePlatformSavings = (records: ProductRecord[]) => {
     if (sourceInfo.bestPlatform === 'flipkart' && sourceInfo.savingsAmount > 0) {
       flipkartSavings += sourceInfo.savingsAmount;
       flipkartWins++;
+      
+      savingsDetails.push({
+        productName: record.product_name,
+        platform: 'flipkart',
+        savings: sourceInfo.savingsAmount,
+        flipkartPrice: getFlipkartPrice(record.flipkart_price),
+        amazonPrice: record.amazon_price || 'N/A',
+        productLink: getProductLink(record.flipkart_price)
+      });
     } else if (sourceInfo.bestPlatform === 'amazon' && sourceInfo.savingsAmount > 0) {
       amazonSavings += sourceInfo.savingsAmount;
       amazonWins++;
+      
+      savingsDetails.push({
+        productName: record.product_name,
+        platform: 'amazon',
+        savings: sourceInfo.savingsAmount,
+        flipkartPrice: getFlipkartPrice(record.flipkart_price),
+        amazonPrice: record.amazon_price || 'N/A',
+        productLink: getProductLink(record.flipkart_price)
+      });
     }
   });
 
@@ -453,7 +488,8 @@ export const calculatePlatformSavings = (records: ProductRecord[]) => {
     amazonSavings,
     flipkartWins,
     amazonWins,
-    totalSavings: flipkartSavings + amazonSavings
+    totalSavings: flipkartSavings + amazonSavings,
+    savingsDetails
   };
 };
 

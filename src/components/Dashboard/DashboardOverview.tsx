@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Activity, ShoppingCart, TrendingUp, AlertCircle, QrCode, RefreshCw, Ticket, Smartphone, Monitor, DollarSign, Target, Award } from 'lucide-react';
+import { Users, Activity, ShoppingCart, TrendingUp, AlertCircle, QrCode, RefreshCw, Ticket, Smartphone, Monitor, DollarSign, Target, Award, ExternalLink, X } from 'lucide-react';
 import { DashboardStats } from '../../types';
 import StatsCard from './StatsCard';
 import { 
@@ -45,9 +45,96 @@ const ChartSkeleton: React.FC = () => (
   </div>
 );
 
+// Savings Details Modal Component
+const SavingsModal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  savingsDetails: Array<{
+    productName: string;
+    platform: string;
+    savings: number;
+    flipkartPrice: string;
+    amazonPrice: string;
+    productLink: string;
+  }>;
+}> = ({ isOpen, onClose, title, savingsDetails }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-xl max-w-4xl w-full max-h-[80vh] overflow-hidden">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+          <h3 className="text-xl font-semibold text-gray-900">{title}</h3>
+          <button
+            onClick={onClose}
+            className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        
+        <div className="p-6 overflow-y-auto max-h-[60vh]">
+          <div className="space-y-4">
+            {savingsDetails.map((detail, index) => (
+              <div key={index} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <h4 className="font-medium text-gray-900 mb-2">{detail.productName}</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                      <div>
+                        <span className="text-gray-600">Flipkart Price:</span>
+                        <p className="font-medium text-green-600">{detail.flipkartPrice}</p>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Amazon Price:</span>
+                        <p className="font-medium text-orange-600">{detail.amazonPrice}</p>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">You Saved:</span>
+                        <p className="font-bold text-blue-600">₹{detail.savings.toLocaleString()}</p>
+                      </div>
+                    </div>
+                  </div>
+                  {detail.productLink && (
+                    <a
+                      href={detail.productLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ml-4 p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"
+                      title="View on Flipkart"
+                    >
+                      <ExternalLink className="w-5 h-5" />
+                    </a>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          {savingsDetails.length === 0 && (
+            <div className="text-center py-8 text-gray-500">
+              No savings data available
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQrScans }) => {
   const [realTimeStats, setRealTimeStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [savingsModal, setSavingsModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    details: any[];
+  }>({
+    isOpen: false,
+    title: '',
+    details: []
+  });
 
   useEffect(() => {
     loadRealTimeData();
@@ -99,7 +186,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
         record.exclusive && record.exclusive !== null
       ).length;
 
-      // Enhanced platform savings calculation
+      // FIXED: Enhanced platform savings calculation with details
       const platformSavings = calculatePlatformSavings(realProductRecords);
       const platformDistribution = getPlatformDistribution(realProductRecords);
 
@@ -149,6 +236,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
         totalSavings: platformSavings.totalSavings,
         flipkartWins: platformSavings.flipkartWins,
         amazonWins: platformSavings.amazonWins,
+        savingsDetails: platformSavings.savingsDetails, // Add savings details
         platformDistribution,
         errorCount,
         successCount,
@@ -168,6 +256,33 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSavingsClick = (type: 'flipkart' | 'amazon' | 'total') => {
+    if (!realTimeStats?.savingsDetails) return;
+
+    let filteredDetails = realTimeStats.savingsDetails;
+    let title = '';
+
+    switch (type) {
+      case 'flipkart':
+        filteredDetails = realTimeStats.savingsDetails.filter((d: any) => d.platform === 'flipkart');
+        title = `Flipkart Savings Details (₹${realTimeStats.flipkartSavings.toLocaleString()})`;
+        break;
+      case 'amazon':
+        filteredDetails = realTimeStats.savingsDetails.filter((d: any) => d.platform === 'amazon');
+        title = `Amazon Savings Details (₹${realTimeStats.amazonSavings.toLocaleString()})`;
+        break;
+      case 'total':
+        title = `Total Savings Details (₹${realTimeStats.totalSavings.toLocaleString()})`;
+        break;
+    }
+
+    setSavingsModal({
+      isOpen: true,
+      title,
+      details: filteredDetails
+    });
   };
 
   // Show skeleton while loading
@@ -308,7 +423,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
         />
       </div>
 
-      {/* Platform Performance Cards */}
+      {/* Enhanced Platform Performance Cards with Clickable Savings */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div className="flex items-center gap-3 mb-4">
@@ -317,7 +432,13 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
             </div>
             <div>
               <h3 className="font-semibold text-gray-900">Flipkart Savings</h3>
-              <p className="text-2xl font-bold text-yellow-600">₹{realTimeStats.flipkartSavings.toLocaleString()}</p>
+              <button
+                onClick={() => handleSavingsClick('flipkart')}
+                className="text-2xl font-bold text-yellow-600 hover:text-yellow-700 transition-colors cursor-pointer flex items-center gap-1"
+              >
+                ₹{realTimeStats.flipkartSavings.toLocaleString()}
+                <ExternalLink className="w-4 h-4" />
+              </button>
             </div>
           </div>
           <p className="text-sm text-gray-600">
@@ -332,7 +453,13 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
             </div>
             <div>
               <h3 className="font-semibold text-gray-900">Amazon Savings</h3>
-              <p className="text-2xl font-bold text-orange-600">₹{realTimeStats.amazonSavings.toLocaleString()}</p>
+              <button
+                onClick={() => handleSavingsClick('amazon')}
+                className="text-2xl font-bold text-orange-600 hover:text-orange-700 transition-colors cursor-pointer flex items-center gap-1"
+              >
+                ₹{realTimeStats.amazonSavings.toLocaleString()}
+                <ExternalLink className="w-4 h-4" />
+              </button>
             </div>
           </div>
           <p className="text-sm text-gray-600">
@@ -347,7 +474,13 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
             </div>
             <div>
               <h3 className="font-semibold text-gray-900">Total Savings</h3>
-              <p className="text-2xl font-bold text-green-600">₹{realTimeStats.totalSavings.toLocaleString()}</p>
+              <button
+                onClick={() => handleSavingsClick('total')}
+                className="text-2xl font-bold text-green-600 hover:text-green-700 transition-colors cursor-pointer flex items-center gap-1"
+              >
+                ₹{realTimeStats.totalSavings.toLocaleString()}
+                <ExternalLink className="w-4 h-4" />
+              </button>
             </div>
           </div>
           <p className="text-sm text-gray-600">
@@ -488,6 +621,14 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
           </div>
         </div>
       </div>
+
+      {/* Savings Details Modal */}
+      <SavingsModal
+        isOpen={savingsModal.isOpen}
+        onClose={() => setSavingsModal({ isOpen: false, title: '', details: [] })}
+        title={savingsModal.title}
+        savingsDetails={savingsModal.details}
+      />
     </div>
   );
 };
