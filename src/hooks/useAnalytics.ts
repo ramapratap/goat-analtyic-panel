@@ -138,9 +138,19 @@ export const useAnalytics = (filters: FilterOptions): UseAnalyticsReturn => {
 
       const flows: UserFlow[] = realProductRecords.map((record, index) => {
         const sourceInfo = parseSearchSource(record.search_source);
-        
+
+        // Ensure id is always a string
+        let id: string;
+        if (typeof record._id === 'string') {
+          id = record._id;
+        } else if (record._id && typeof record._id === 'object' && '$oid' in record._id) {
+          id = record._id.$oid;
+        } else {
+          id = String(record._id);
+        }
+
         return {
-          id: record._id,
+          id: id,
           userId: maskPhoneNumber(record.user_id),
           timestamp: record.timestamp,
           source: sourceInfo.inputType || 'Unknown',
@@ -148,7 +158,7 @@ export const useAnalytics = (filters: FilterOptions): UseAnalyticsReturn => {
           action: sourceInfo.status === 'Success' ? 'success' : 'error',
           productName: record.product_name,
           productBrand: sourceInfo.flipkartName || 'Unknown',
-          sessionId: `session_${record._id}`,
+          sessionId: `session_${id}`,
           userAgent: record.device_info || 'Unknown',
           ipAddress: 'Hidden'
         };
@@ -179,9 +189,19 @@ export const useAnalytics = (filters: FilterOptions): UseAnalyticsReturn => {
         const sourceInfo = parseSearchSource(record.search_source);
         const flipkartPrice = getFlipkartPrice(record.flipkart_price);
         const priceValue = flipkartPrice.replace(/[₹,]/g, '') || '0';
-        
+
+        // Ensure _id is always a string
+        let id: string;
+        if (typeof record._id === 'string') {
+          id = record._id;
+        } else if (record._id && typeof record._id === 'object' && '$oid' in record._id) {
+          id = record._id.$oid;
+        } else {
+          id = String(record._id);
+        }
+
         return {
-          _id: record._id,
+          _id: id,
           user_id: maskPhoneNumber(record.user_id),
           productName: record.product_name,
           productBrand: sourceInfo.flipkartName || sourceInfo.amazonName || 'Unknown',

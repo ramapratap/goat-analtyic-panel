@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
-import { Package, TrendingUp, Users, DollarSign, Search, Filter, Download, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Package, TrendingUp, Users, DollarSign, Search, Filter, Download, RefreshCw, ChevronLeft, ChevronRight, IndianRupee } from 'lucide-react';
 
 interface CouponAnalytics {
   totalCoupons: number;
@@ -188,7 +188,7 @@ export default function CouponAnalytics() {
     .map(([category, count]) => ({
       category,
       count,
-      percentage: analytics.totalCoupons > 0 ? ((count / analytics.totalCoupons) * 100) : 0
+      percentage: analytics.totalCoupons > 0 ? ((count / analytics.totalCoupons) * 100).toFixed(2) : 0
     }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 10);
@@ -308,37 +308,9 @@ export default function CouponAnalytics() {
                   <p className="text-2xl font-bold text-gray-900">
                     {analytics.totalUsed.toLocaleString()}
                   </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    DB: {analytics.dbUsedCount} + CSV: {analytics.csvUsedCount}
-                  </p>
+                  
                 </div>
                 <Users className="w-8 h-8 text-green-600" />
-              </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-lg shadow-sm border">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">DB Used</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {analytics.dbUsedCount.toLocaleString()}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">Database count</p>
-                </div>
-                <Users className="w-8 h-8 text-purple-600" />
-              </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-lg shadow-sm border">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">CSV Used</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {analytics.csvUsedCount.toLocaleString()}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">CSV file count</p>
-                </div>
-                <Users className="w-8 h-8 text-orange-600" />
               </div>
             </div>
 
@@ -350,7 +322,7 @@ export default function CouponAnalytics() {
                     ₹{analytics.totalValue.toLocaleString()}
                   </p>
                 </div>
-                <DollarSign className="w-8 h-8 text-yellow-600" />
+                <IndianRupee className="w-8 h-8 text-yellow-600" />
               </div>
             </div>
 
@@ -365,6 +337,17 @@ export default function CouponAnalytics() {
                 <TrendingUp className="w-8 h-8 text-pink-600" />
               </div>
             </div>
+              <div className="bg-white p-6 rounded-lg shadow-sm border">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Top Performer </p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    ID:{analytics.topPerforming[0]?.id} {analytics.topPerforming[0]?.category || 'N/A'} ({analytics.topPerforming[0]?.usageRate.toFixed(2)}%)
+                  </p>
+                </div>
+                <TrendingUp className="w-8 h-8 text-pink-600" />
+              </div>
+            </div>
           </div>
 
           {/* Enhanced Charts */}
@@ -373,14 +356,18 @@ export default function CouponAnalytics() {
             <div className="bg-white p-6 rounded-lg shadow-sm border">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Top Performing Coupons</h3>
               {analytics.topPerforming.length > 0 ? (
-                <ResponsiveContainer width="100%" height={300}>
+                <ResponsiveContainer width="100%" height={500}>
                   <BarChart data={analytics.topPerforming.slice(0, 8)}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                      dataKey="brand" 
+                    <XAxis
+                      dataKey="id"
                       angle={-45}
                       textAnchor="end"
                       height={80}
+                      tickFormatter={(value, index) => {
+                        const item = analytics.topPerforming[index];
+                        return `${item.category} (${item.id})`;
+                      }}
                     />
                     <YAxis />
                     <Tooltip 
@@ -411,7 +398,7 @@ export default function CouponAnalytics() {
                       cy="50%"
                       labelLine={false}
                       label={({ name, percentage }) => `${name} ${percentage.toFixed(2)}%`}
-                      outerRadius={80}
+                      outerRadius={100}
                       fill="#8884d8"
                       dataKey="value"
                     >
@@ -429,6 +416,34 @@ export default function CouponAnalytics() {
               )}
             </div>
           </div>
+          <div className="bg-white p-6 rounded-lg shadow-sm border">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Overall Coupon Type Distribution</h3>
+              {typeDistributionData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={typeDistributionData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percentage }) => `${name} ${percentage.toFixed(2)}%`}
+                      outerRadius={100}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {usageTypeData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value) => [value, 'Used Count']} />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="text-center text-gray-500 py-12">
+                  No usage distribution data available
+                </div>
+              )}
+            </div>
         </div>
       )}
 
@@ -449,7 +464,7 @@ export default function CouponAnalytics() {
                   />
                   <YAxis />
                   <Tooltip />
-                  <Bar dataKey="count" fill="#3b82f6" />
+                  <Bar dataKey="percentage" fill="#3b82f6" />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
