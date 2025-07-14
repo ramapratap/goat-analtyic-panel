@@ -3,7 +3,6 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './components/Login';
 import Sidebar from './components/Layout/Sidebar';
 import DashboardOverview from './components/Dashboard/DashboardOverview';
-import UserFlowAnalytics from './components/Analytics/UserFlowAnalytics';
 import ProductAnalytics from './components/Analytics/ProductAnalytics';
 import CouponAnalytics from './components/Analytics/CouponAnalytics';
 import UserManagement from './components/UserManagement/UserManagement';
@@ -78,19 +77,6 @@ const Dashboard: React.FC = () => {
         return <DashboardOverview stats={stats} onRefreshQrScans={handleRefreshQrScans} />;
       case 'products':
         return <ProductAnalytics />;
-      case 'user-flows':
-        return (
-          <div>
-            {loadingStates.userFlows && userFlows.length === 0 ? (
-              <div className="p-6 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                <span className="ml-3 text-gray-600">Loading user flows...</span>
-              </div>
-            ) : (
-              <UserFlowAnalytics userFlows={userFlows} onExport={exportData} />
-            )}
-          </div>
-        );
       case 'coupons':
         return <CouponAnalytics />;
       case 'users':
@@ -107,7 +93,7 @@ const Dashboard: React.FC = () => {
         onTabChange={setActiveTab}
       />
       <div className="flex-1 overflow-auto">
-        {(activeTab === 'dashboard' || activeTab === 'user-flows' || activeTab === 'products') && (
+        {(activeTab === 'dashboard' || activeTab === 'products') && (
           <div className="p-6 pb-0">
             <FilterPanel filters={filters} onFiltersChange={setFilters} />
           </div>

@@ -25,7 +25,6 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange }) => {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: BarChart3, roles: ['admin', 'editor', 'viewer'] },
     { id: 'products', label: 'Product Analytics', icon: ShoppingCart, roles: ['admin', 'editor', 'viewer'] },
-    { id: 'user-flows', label: 'User Flows', icon: TrendingUp, roles: ['admin', 'editor', 'viewer'] },
     { id: 'coupons', label: 'Coupon Analytics', icon: Ticket, roles: ['admin', 'editor', 'viewer'] },
     { id: 'users', label: 'User Management', icon: Users, roles: ['admin'] },
     { id: 'settings', label: 'Settings', icon: Settings, roles: ['admin', 'editor'] },

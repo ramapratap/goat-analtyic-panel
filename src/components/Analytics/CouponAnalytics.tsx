@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Download, Filter, Search, TrendingUp, Ticket, Users, DollarSign, ExternalLink, Calendar, Award } from 'lucide-react';
+import { Download, Filter, Search, TrendingUp, Ticket, Users, DollarSign, Award } from 'lucide-react';
 import { format } from 'date-fns';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 // Helper functions at the top level
 const getTypeColor = (type: string): string => {
@@ -92,6 +92,7 @@ const CouponAnalytics: React.FC = () => {
   const [itemsPerPage] = useState(20);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadCouponData();
@@ -99,27 +100,47 @@ const CouponAnalytics: React.FC = () => {
 
   const loadCouponData = async () => {
     setLoading(true);
+    setError(null);
     try {
       console.log('Loading coupon analytics from API...');
       
+      const token = localStorage.getItem('authToken');
+      const headers = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      };
+
       const [analyticsResponse, summaryResponse] = await Promise.all([
-        fetch('/api/analytics/coupons'),
-        fetch('/api/analytics/coupons?summary=true')
+        fetch('/api/analytics/coupons', { headers }),
+        fetch('/api/analytics/coupons?summary=true', { headers })
       ]);
+      
+      console.log('Analytics response status:', analyticsResponse.status);
+      console.log('Summary response status:', summaryResponse.status);
       
       if (analyticsResponse.ok) {
         const analyticsData = await analyticsResponse.json();
+        console.log('Analytics data received:', analyticsData);
         setAnalytics(analyticsData.analytics || analyticsData || []);
+      } else {
+        const errorText = await analyticsResponse.text();
+        console.error('Analytics API error:', errorText);
+        setError(`Failed to load analytics: ${analyticsResponse.status}`);
       }
       
       if (summaryResponse.ok) {
         const summaryData = await summaryResponse.json();
+        console.log('Summary data received:', summaryData);
         setSummary(summaryData.summary || summaryData || null);
+      } else {
+        const errorText = await summaryResponse.text();
+        console.error('Summary API error:', errorText);
       }
       
       console.log('Coupon analytics loaded successfully');
     } catch (error) {
       console.error('Error loading coupon data:', error);
+      setError(`Error loading coupon data: ${error}`);
     } finally {
       setLoading(false);
     }
@@ -188,6 +209,23 @@ const CouponAnalytics: React.FC = () => {
       <div className="p-6 flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
         <span className="ml-3 text-gray-600">Loading coupon analytics...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <div className="bg-red-50 border border-red-200 rounded-xl p-6">
+          <h3 className="text-lg font-semibold text-red-900 mb-2">Error Loading Coupon Data</h3>
+          <p className="text-red-700 mb-4">{error}</p>
+          <button
+            onClick={loadCouponData}
+            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
@@ -310,39 +348,51 @@ const CouponAnalytics: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Top Performing Coupons</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="total" fill="#3B82F6" name="Total" />
-                <Bar dataKey="used" fill="#10B981" name="Used" />
-              </BarChart>
-            </ResponsiveContainer>
+            {chartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="total" fill="#3B82F6" name="Total" />
+                  <Bar dataKey="used" fill="#10B981" name="Used" />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-64 flex items-center justify-center text-gray-500">
+                No coupon data available
+              </div>
+            )}
           </div>
 
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Coupon Type Distribution</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={typeDistributionData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {typeDistributionData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
+            {typeDistributionData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={typeDistributionData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {typeDistributionData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-64 flex items-center justify-center text-gray-500">
+                No type distribution data available
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -384,91 +434,99 @@ const CouponAnalytics: React.FC = () => {
             </select>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="text-left py-3 px-4 font-medium text-gray-900">ID</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-900">Category</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-900">Brand</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-900">Model</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-900">Total Coupons</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-900">Used</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-900">Usage Rate</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-900">Total Value</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-900">Types</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paginatedAnalytics.map((item, index) => (
-                  <tr key={item.id} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-                    <td className="py-3 px-4 text-sm text-gray-900 font-mono">{safeRender(item.id)}</td>
-                    <td className="py-3 px-4 text-sm text-gray-900">{safeRender(item.category)}</td>
-                    <td className="py-3 px-4 text-sm text-gray-900">{safeRender(item.brand)}</td>
-                    <td className="py-3 px-4 text-sm text-gray-900">{safeRender(item.model)}</td>
-                    <td className="py-3 px-4 text-sm text-gray-900">{item.totalCoupons || 0}</td>
-                    <td className="py-3 px-4 text-sm text-gray-900">{item.usedCoupons || 0}</td>
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-2">
-                        <div className="w-16 bg-gray-200 rounded-full h-2">
-                          <div
-                            className="bg-green-500 h-2 rounded-full"
-                            style={{ width: `${Math.min(item.usageRate || 0, 100)}%` }}
-                          />
-                        </div>
-                        <span className="text-sm text-gray-600">
-                          {(item.usageRate || 0).toFixed(1)}%
-                        </span>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 text-sm text-gray-900">₹{(item.totalValue || 0).toLocaleString()}</td>
-                    <td className="py-3 px-4">
-                      <div className="flex flex-wrap gap-1">
-                        {Object.keys(item.couponTypes || {}).map(type => (
-                          <span
-                            key={type}
-                            className="px-2 py-1 rounded-full text-xs font-medium"
-                            style={{ 
-                              backgroundColor: getTypeColor(type) + '20',
-                              color: getTypeColor(type)
-                            }}
-                          >
-                            {type}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {paginatedAnalytics.length > 0 ? (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-200">
+                      <th className="text-left py-3 px-4 font-medium text-gray-900">ID</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-900">Category</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-900">Brand</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-900">Model</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-900">Total Coupons</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-900">Used</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-900">Usage Rate</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-900">Total Value</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-900">Types</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedAnalytics.map((item, index) => (
+                      <tr key={item.id} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+                        <td className="py-3 px-4 text-sm text-gray-900 font-mono">{safeRender(item.id)}</td>
+                        <td className="py-3 px-4 text-sm text-gray-900">{safeRender(item.category)}</td>
+                        <td className="py-3 px-4 text-sm text-gray-900">{safeRender(item.brand)}</td>
+                        <td className="py-3 px-4 text-sm text-gray-900">{safeRender(item.model)}</td>
+                        <td className="py-3 px-4 text-sm text-gray-900">{item.totalCoupons || 0}</td>
+                        <td className="py-3 px-4 text-sm text-gray-900">{item.usedCoupons || 0}</td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-2">
+                            <div className="w-16 bg-gray-200 rounded-full h-2">
+                              <div
+                                className="bg-green-500 h-2 rounded-full"
+                                style={{ width: `${Math.min(item.usageRate || 0, 100)}%` }}
+                              />
+                            </div>
+                            <span className="text-sm text-gray-600">
+                              {(item.usageRate || 0).toFixed(1)}%
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-900">₹{(item.totalValue || 0).toLocaleString()}</td>
+                        <td className="py-3 px-4">
+                          <div className="flex flex-wrap gap-1">
+                            {Object.keys(item.couponTypes || {}).map(type => (
+                              <span
+                                key={type}
+                                className="px-2 py-1 rounded-full text-xs font-medium"
+                                style={{ 
+                                  backgroundColor: getTypeColor(type) + '20',
+                                  color: getTypeColor(type)
+                                }}
+                              >
+                                {type}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-6">
-              <div className="text-sm text-gray-700">
-                Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredAnalytics.length)} of {filteredAnalytics.length} results
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                  disabled={currentPage === 1}
-                  className="px-3 py-1 border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-                >
-                  Previous
-                </button>
-                <span className="px-3 py-1 text-sm text-gray-700">
-                  Page {currentPage} of {totalPages}
-                </span>
-                <button
-                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                  disabled={currentPage === totalPages}
-                  className="px-3 py-1 border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-                >
-                  Next
-                </button>
-              </div>
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between mt-6">
+                  <div className="text-sm text-gray-700">
+                    Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredAnalytics.length)} of {filteredAnalytics.length} results
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                      disabled={currentPage === 1}
+                      className="px-3 py-1 border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                    >
+                      Previous
+                    </button>
+                    <span className="px-3 py-1 text-sm text-gray-700">
+                      Page {currentPage} of {totalPages}
+                    </span>
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                      disabled={currentPage === totalPages}
+                      className="px-3 py-1 border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="text-center py-12">
+              <p className="text-gray-500">No coupon data found matching your criteria.</p>
             </div>
           )}
         </div>
@@ -478,15 +536,21 @@ const CouponAnalytics: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Category Distribution</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={categoryDistributionData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="value" fill="#8B5CF6" name="Used Coupons" />
-              </BarChart>
-            </ResponsiveContainer>
+            {categoryDistributionData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={categoryDistributionData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="value" fill="#8B5CF6" name="Used Coupons" />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-64 flex items-center justify-center text-gray-500">
+                No category data available
+              </div>
+            )}
           </div>
 
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -503,6 +567,11 @@ const CouponAnalytics: React.FC = () => {
                   </div>
                 </div>
               ))}
+              {categoryDistributionData.length === 0 && (
+                <div className="text-center py-8 text-gray-500">
+                  No category performance data available
+                </div>
+              )}
             </div>
           </div>
         </div>

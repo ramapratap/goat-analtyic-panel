@@ -205,9 +205,12 @@ router.get('/coupons', async (req: AuthRequest, res) => {
 
     console.log('Fetching coupon analytics...');
 
+    // Import the coupon service functions
+    const { generateOptimizedCouponAnalytics, getCouponSummaryStats } = await import('../services/couponService');
+    
     const [couponAnalytics, summaryStats] = await Promise.all([
-      generateOptimizedCouponAnalytics(),
-      summary ? getCouponSummaryStats() : Promise.resolve(null)
+      generateOptimizedCouponAnalytics().catch(() => []),
+      summary ? getCouponSummaryStats().catch(() => null) : Promise.resolve(null)
     ]);
     
     let filteredAnalytics = couponAnalytics;
