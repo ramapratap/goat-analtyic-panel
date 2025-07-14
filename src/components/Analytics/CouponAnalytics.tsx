@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { Package, TrendingUp, Users, DollarSign, Search, Filter, Download, RefreshCw } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
+import { Package, TrendingUp, Users, DollarSign, Search, Filter, Download, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface CouponAnalytics {
   totalCoupons: number;
   totalUsed: number;
+  dbUsedCount: number;
+  csvUsedCount: number;
   totalValue: number;
   avgUsageRate: number;
   typeDistribution: { [key: string]: number };
@@ -18,6 +20,14 @@ interface CouponAnalytics {
     totalValue: number;
     totalCoupons: number;
     usedCoupons: number;
+    couponTypes: {
+      [key: string]: {
+        value: number;
+        count: number;
+        used: number;
+        usageRate: number;
+      };
+    };
   }>;
   totalRecords: number;
   lastUpdated: string;
@@ -33,13 +43,15 @@ export default function CouponAnalytics() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedType, setSelectedType] = useState('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(20);
 
   const fetchCouponAnalytics = async () => {
     try {
       setLoading(true);
       setError(null);
       
-      console.log('🔍 Fetching coupon analytics...');
+      console.log('🔍 Fetching enhanced coupon analytics...');
       const response = await fetch('/api/analytics/coupons?summary=true');
       
       if (!response.ok) {
@@ -47,18 +59,19 @@ export default function CouponAnalytics() {
       }
       
       const data = await response.json();
-      console.log('📊 Received coupon analytics:', data);
+      console.log('📊 Received enhanced coupon analytics:', data);
       
       if (data.analytics && Array.isArray(data.analytics)) {
-        // Process the analytics data
         const processedAnalytics: CouponAnalytics = {
           totalCoupons: data.summary?.totalCoupons || 0,
           totalUsed: data.summary?.totalUsed || 0,
+          dbUsedCount: data.summary?.dbUsedCount || 0,
+          csvUsedCount: data.summary?.csvUsedCount || 0,
           totalValue: data.summary?.totalValue || 0,
           avgUsageRate: data.summary?.avgUsageRate || 0,
           typeDistribution: data.summary?.typeDistribution || {},
           categoryDistribution: {},
-          topPerforming: data.analytics.slice(0, 20),
+          topPerforming: data.analytics.slice(0, 50),
           totalRecords: data.totalRecords || 0,
           lastUpdated: data.lastUpdated || new Date().toISOString()
         };
@@ -110,6 +123,8 @@ export default function CouponAnalytics() {
     const rows = [
       ['Total Coupons', data.totalCoupons.toString()],
       ['Total Used', data.totalUsed.toString()],
+      ['DB Used Count', data.dbUsedCount.toString()],
+      ['CSV Used Count', data.csvUsedCount.toString()],
       ['Total Value', data.totalValue.toString()],
       ['Average Usage Rate', `${data.avgUsageRate.toFixed(2)}%`],
     ];
@@ -123,7 +138,7 @@ export default function CouponAnalytics() {
         <div className="flex items-center justify-center h-64">
           <div className="flex items-center space-x-2">
             <RefreshCw className="w-6 h-6 animate-spin text-blue-600" />
-            <span className="text-lg text-gray-600">Loading coupon analytics...</span>
+            <span className="text-lg text-gray-600">Loading enhanced coupon analytics...</span>
           </div>
         </div>
       </div>
@@ -162,21 +177,37 @@ export default function CouponAnalytics() {
     );
   }
 
+  // Enhanced data processing for charts
   const typeDistributionData = Object.entries(analytics.typeDistribution).map(([type, count]) => ({
     name: type,
     value: count,
-    percentage: analytics.totalCoupons > 0 ? ((count / analytics.totalCoupons) * 100).toFixed(1) : '0'
+    percentage: analytics.totalCoupons > 0 ? ((count / analytics.totalCoupons) * 100) : 0
   }));
 
   const categoryPerformanceData = Object.entries(analytics.categoryDistribution)
     .map(([category, count]) => ({
       category,
       count,
-      percentage: analytics.totalCoupons > 0 ? ((count / analytics.totalCoupons) * 100).toFixed(1) : '0'
+      percentage: analytics.totalCoupons > 0 ? ((count / analytics.totalCoupons) * 100) : 0
     }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 10);
 
+  // Usage type distribution for pie chart
+  const usageTypeData = Object.entries(analytics.typeDistribution).map(([type, count], index) => {
+    const used = analytics.topPerforming.reduce((sum, item) => {
+      return sum + (item.couponTypes[type]?.used || 0);
+    }, 0);
+    
+    return {
+      name: type,
+      value: used,
+      percentage: analytics.totalUsed > 0 ? ((used / analytics.totalUsed) * 100) : 0,
+      color: COLORS[index % COLORS.length]
+    };
+  }).filter(item => item.value > 0);
+
+  // Filter data for categories tab
   const filteredTopPerforming = analytics.topPerforming.filter(item => {
     const matchesSearch = searchTerm === '' || 
       item.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -188,12 +219,17 @@ export default function CouponAnalytics() {
     return matchesSearch && matchesCategory;
   });
 
+  // Pagination
+  const totalPages = Math.ceil(filteredTopPerforming.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedData = filteredTopPerforming.slice(startIndex, startIndex + itemsPerPage);
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Coupon Analytics</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Enhanced Coupon Analytics</h1>
           <p className="text-gray-600 mt-1">
             Last updated: {new Date(analytics.lastUpdated).toLocaleString()}
           </p>
@@ -250,8 +286,8 @@ export default function CouponAnalytics() {
       {/* Overview Tab */}
       {activeTab === 'overview' && (
         <div className="space-y-6">
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+          {/* Enhanced Stats Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
             <div className="bg-white p-6 rounded-lg shadow-sm border">
               <div className="flex items-center justify-between">
                 <div>
@@ -259,6 +295,7 @@ export default function CouponAnalytics() {
                   <p className="text-2xl font-bold text-gray-900">
                     {analytics.totalCoupons.toLocaleString()}
                   </p>
+                  <p className="text-xs text-gray-500 mt-1">All coupon links</p>
                 </div>
                 <Package className="w-8 h-8 text-blue-600" />
               </div>
@@ -272,10 +309,36 @@ export default function CouponAnalytics() {
                     {analytics.totalUsed.toLocaleString()}
                   </p>
                   <p className="text-xs text-gray-500 mt-1">
-                    DB + CSV data
+                    DB: {analytics.dbUsedCount} + CSV: {analytics.csvUsedCount}
                   </p>
                 </div>
                 <Users className="w-8 h-8 text-green-600" />
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-lg shadow-sm border">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600">DB Used</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {analytics.dbUsedCount.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">Database count</p>
+                </div>
+                <Users className="w-8 h-8 text-purple-600" />
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-lg shadow-sm border">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600">CSV Used</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {analytics.csvUsedCount.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">CSV file count</p>
+                </div>
+                <Users className="w-8 h-8 text-orange-600" />
               </div>
             </div>
 
@@ -296,30 +359,15 @@ export default function CouponAnalytics() {
                 <div>
                   <p className="text-sm font-medium text-gray-600">Avg Usage Rate</p>
                   <p className="text-2xl font-bold text-gray-900">
-                    {analytics.avgUsageRate.toFixed(1)}%
+                    {analytics.avgUsageRate.toFixed(2)}%
                   </p>
                 </div>
-                <TrendingUp className="w-8 h-8 text-purple-600" />
-              </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-lg shadow-sm border">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Top Category</p>
-                  <p className="text-lg font-bold text-gray-900">
-                    {categoryPerformanceData[0]?.category || 'Unknown'}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {categoryPerformanceData[0]?.percentage}% of total
-                  </p>
-                </div>
-                <Filter className="w-8 h-8 text-pink-600" />
+                <TrendingUp className="w-8 h-8 text-pink-600" />
               </div>
             </div>
           </div>
 
-          {/* Charts */}
+          {/* Enhanced Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Top Performing Coupons */}
             <div className="bg-white p-6 rounded-lg shadow-sm border">
@@ -337,7 +385,7 @@ export default function CouponAnalytics() {
                     <YAxis />
                     <Tooltip 
                       formatter={(value, name) => [
-                        name === 'usageRate' ? `${value}%` : value,
+                        name === 'usageRate' ? `${Number(value).toFixed(2)}%` : value,
                         name === 'usageRate' ? 'Usage Rate' : 'Total Value'
                       ]}
                     />
@@ -351,32 +399,32 @@ export default function CouponAnalytics() {
               )}
             </div>
 
-            {/* Coupon Type Distribution */}
+            {/* Enhanced Coupon Type Distribution */}
             <div className="bg-white p-6 rounded-lg shadow-sm border">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Coupon Type Distribution</h3>
-              {typeDistributionData.length > 0 ? (
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Used Coupon Type Distribution</h3>
+              {usageTypeData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={300}>
                   <PieChart>
                     <Pie
-                      data={typeDistributionData}
+                      data={usageTypeData}
                       cx="50%"
                       cy="50%"
                       labelLine={false}
-                      label={({ name, percentage }) => `${name} ${percentage}%`}
+                      label={({ name, percentage }) => `${name} ${percentage.toFixed(2)}%`}
                       outerRadius={80}
                       fill="#8884d8"
                       dataKey="value"
                     >
-                      {typeDistributionData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      {usageTypeData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
                       ))}
                     </Pie>
-                    <Tooltip />
+                    <Tooltip formatter={(value) => [value, 'Used Count']} />
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
                 <div className="text-center text-gray-500 py-12">
-                  No type distribution data available
+                  No usage distribution data available
                 </div>
               )}
             </div>
@@ -441,53 +489,28 @@ export default function CouponAnalytics() {
                   <option key={category} value={category}>{category}</option>
                 ))}
               </select>
-              <select
-                value={selectedType}
-                onChange={(e) => setSelectedType(e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="all">All Types</option>
-                {Object.keys(analytics.typeDistribution).map(type => (
-                  <option key={type} value={type}>{type}</option>
-                ))}
-              </select>
             </div>
           </div>
 
-          {/* Coupon Table */}
+          {/* Enhanced Coupon Table */}
           <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      ID
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Category
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Brand
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Model
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Total Coupons
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Used
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Usage Rate
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Total Value
-                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Brand</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Model</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Coupons</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Used</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usage Rate</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Value</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Types</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredTopPerforming.slice(0, 20).map((coupon, index) => (
+                  {paginatedData.map((coupon, index) => (
                     <tr key={coupon.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         {coupon.id}
@@ -516,18 +539,106 @@ export default function CouponAnalytics() {
                             ></div>
                           </div>
                           <span className="text-sm text-gray-600">
-                            {coupon.usageRate.toFixed(1)}%
+                            {coupon.usageRate.toFixed(2)}%
                           </span>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         ₹{coupon.totalValue.toLocaleString()}
                       </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex flex-wrap gap-1">
+                          {Object.entries(coupon.couponTypes).map(([type, data]) => (
+                            <span
+                              key={type}
+                              className={`px-2 py-1 text-xs rounded-full ${
+                                type === 'low' ? 'bg-green-100 text-green-800' :
+                                type === 'mid' ? 'bg-blue-100 text-blue-800' :
+                                type === 'high' ? 'bg-yellow-100 text-yellow-800' :
+                                type === 'pro' ? 'bg-purple-100 text-purple-800' :
+                                'bg-red-100 text-red-800'
+                              }`}
+                            >
+                              {type}: {data.used}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+            
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
+                <div className="flex-1 flex justify-between sm:hidden">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1}
+                    className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                    disabled={currentPage === totalPages}
+                    className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Next
+                  </button>
+                </div>
+                <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm text-gray-700">
+                      Showing <span className="font-medium">{startIndex + 1}</span> to{' '}
+                      <span className="font-medium">
+                        {Math.min(startIndex + itemsPerPage, filteredTopPerforming.length)}
+                      </span>{' '}
+                      of <span className="font-medium">{filteredTopPerforming.length}</span> results
+                    </p>
+                  </div>
+                  <div>
+                    <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                      <button
+                        onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                        disabled={currentPage === 1}
+                        className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        <ChevronLeft className="h-5 w-5" />
+                      </button>
+                      
+                      {/* Page numbers */}
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        const pageNum = Math.max(1, Math.min(currentPage - 2 + i, totalPages - 4 + i));
+                        return (
+                          <button
+                            key={pageNum}
+                            onClick={() => setCurrentPage(pageNum)}
+                            className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
+                              currentPage === pageNum
+                                ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
+                                : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                            }`}
+                          >
+                            {pageNum}
+                          </button>
+                        );
+                      })}
+                      
+                      <button
+                        onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                        disabled={currentPage === totalPages}
+                        className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        <ChevronRight className="h-5 w-5" />
+                      </button>
+                    </nav>
+                  </div>
+                </div>
+              </div>
+            )}
             
             {filteredTopPerforming.length === 0 && (
               <div className="text-center py-12 text-gray-500">

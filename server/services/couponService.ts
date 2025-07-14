@@ -1,4 +1,4 @@
-// server/services/couponService.ts - Real Database Integration with CSV Merge
+// server/services/couponService.ts - Enhanced Real Database Integration with CSV Merge
 import { getNewDb } from '../config/database';
 import usedCouponsCSV from '../data/usedCouponsCSV.json';
 
@@ -99,7 +99,6 @@ export const fetchCouponData = async (): Promise<CouponData[]> => {
           'Coupon Count_extreme': 1
         }
       })
-      .limit(1000)
       .toArray();
 
     console.log(`✅ Fetched ${coupons.length} coupon records from database`);
@@ -112,7 +111,7 @@ export const fetchCouponData = async (): Promise<CouponData[]> => {
   }
 };
 
-// Fetch coupon links from database
+// Fetch coupon links from database with proper counting
 export const fetchCouponLinks = async (): Promise<CouponLink[]> => {
   const cacheKey = 'coupon_links';
   const cached = getCachedDbData(cacheKey);
@@ -133,7 +132,6 @@ export const fetchCouponLinks = async (): Promise<CouponLink[]> => {
         }
       })
       .sort({ timestamp: -1 })
-      .limit(10000) // Limit for performance
       .toArray();
 
     console.log(`✅ Fetched ${couponLinks.length} coupon link records from database`);
@@ -165,15 +163,16 @@ const parseNumericValue = (value: string | undefined): number => {
   return isNaN(parsed) ? 0 : parsed;
 };
 
-// Generate comprehensive coupon analytics
+// Enhanced coupon analytics with proper DB + CSV merging
 export const generateOptimizedCouponAnalytics = async (): Promise<CouponAnalytics[]> => {
   try {
-    console.log('📊 Generating coupon analytics...');
+    console.log('📊 Generating enhanced coupon analytics...');
     
     const [coupons, couponLinks] = await Promise.all([
       fetchCouponData(),
       fetchCouponLinks()
     ]);
+
     if (coupons.length === 0) {
       console.warn('⚠️ No coupon data found');
       return [];
@@ -181,10 +180,10 @@ export const generateOptimizedCouponAnalytics = async (): Promise<CouponAnalytic
 
     console.log(`📈 Processing ${coupons.length} coupons and ${couponLinks.length} links`);
 
-    // Create usage map from database
+    // Create usage map from database (is_used: true)
     const dbUsageMap = new Map<string, Map<string, number>>();
     couponLinks.forEach(link => {
-      if (link.is_used && link.id && link['Coupon type']) {
+      if (link.is_used === true && link.id && link['Coupon type']) {
         if (!dbUsageMap.has(link.id)) {
           dbUsageMap.set(link.id, new Map());
         }
@@ -210,20 +209,20 @@ export const generateOptimizedCouponAnalytics = async (): Promise<CouponAnalytic
 
     console.log(`📊 DB Usage: ${dbUsageMap.size} IDs, CSV Usage: ${csvUsageMap.size} IDs`);
 
-    // Process each coupon
+    // Process each coupon with enhanced analytics
     const analytics: CouponAnalytics[] = coupons.map(coupon => {
       const id = coupon.id || coupon._id;
       const dbUsage = dbUsageMap.get(id) || new Map();
       const csvUsage = csvUsageMap.get(id) || new Map();
 
-      // Merge usage data (take maximum to avoid double counting)
+      // Merge usage data (add both sources)
       const mergedUsage = new Map<string, number>();
       const allTypes = new Set([...dbUsage.keys(), ...csvUsage.keys()]);
       
       allTypes.forEach(type => {
         const dbCount = dbUsage.get(type) || 0;
         const csvCount = csvUsage.get(type) || 0;
-        mergedUsage.set(type, Math.max(dbCount, csvCount));
+        mergedUsage.set(type, dbCount + csvCount); // Add both sources
       });
 
       // Calculate coupon type statistics
@@ -281,14 +280,25 @@ export const generateOptimizedCouponAnalytics = async (): Promise<CouponAnalytic
   }
 };
 
-// Get coupon summary statistics
+// Get enhanced coupon summary statistics
 export const getCouponSummaryStats = async () => {
   try {
-    const analytics = await generateOptimizedCouponAnalytics();
+    const [analytics, couponLinks] = await Promise.all([
+      generateOptimizedCouponAnalytics(),
+      fetchCouponLinks()
+    ]);
+    
+    // Count database used coupons (is_used: true)
+    const dbUsedCount = couponLinks.filter(link => link.is_used === true).length;
+    
+    // Count CSV used coupons
+    const csvUsedCount = usedCouponsCSV.length;
     
     const summary = {
-      totalCoupons: analytics.reduce((sum, a) => sum + a.totalCoupons, 0),
-      totalUsed: analytics.reduce((sum, a) => sum + a.usedCoupons, 0),
+      totalCoupons: couponLinks.length, // Total coupon links (561,918)
+      totalUsed: dbUsedCount + csvUsedCount, // DB used + CSV used
+      dbUsedCount, // Database used coupons count
+      csvUsedCount, // CSV used coupons count
       totalValue: analytics.reduce((sum, a) => sum + a.totalValue, 0),
       avgUsageRate: analytics.length > 0 
         ? analytics.reduce((sum, a) => sum + a.usageRate, 0) / analytics.length 
@@ -297,16 +307,18 @@ export const getCouponSummaryStats = async () => {
       typeDistribution: {} as Record<string, number>
     };
 
-    // Calculate type distribution
+    // Calculate type distribution from analytics
     analytics.forEach(coupon => {
       Object.keys(coupon.couponTypes).forEach(type => {
         summary.typeDistribution[type] = (summary.typeDistribution[type] || 0) + coupon.couponTypes[type].count;
       });
     });
 
-    console.log('📊 Summary Stats:', {
+    console.log('📊 Enhanced Summary Stats:', {
       totalCoupons: summary.totalCoupons,
       totalUsed: summary.totalUsed,
+      dbUsed: summary.dbUsedCount,
+      csvUsed: summary.csvUsedCount,
       totalValue: summary.totalValue,
       avgUsageRate: summary.avgUsageRate.toFixed(2) + '%'
     });
@@ -317,6 +329,8 @@ export const getCouponSummaryStats = async () => {
     return {
       totalCoupons: 0,
       totalUsed: 0,
+      dbUsedCount: 0,
+      csvUsedCount: 0,
       totalValue: 0,
       avgUsageRate: 0,
       totalActiveCoupons: 0,
