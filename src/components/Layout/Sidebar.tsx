@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { 
   BarChart3, 
@@ -10,7 +10,9 @@ import {
   Shield,
   Eye,
   Edit,
-  Ticket
+  Ticket,
+  Menu,
+  X
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -21,6 +23,47 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange }) => {
   const { user, logout } = useAuth();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Close mobile menu when tab changes
+  const handleTabChange = (tab: string) => {
+    onTabChange(tab);
+    setIsMobileMenuOpen(false);
+  };
+
+  // Close mobile menu on window resize to desktop
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 768) {
+        setIsMobileMenuOpen(false);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Close mobile menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const sidebar = document.getElementById('mobile-sidebar');
+      const menuButton = document.getElementById('mobile-menu-button');
+      
+      if (isMobileMenuOpen && sidebar && menuButton && 
+          !sidebar.contains(event.target as Node) && 
+          !menuButton.contains(event.target as Node)) {
+        setIsMobileMenuOpen(false);
+      }
+    };
+
+    if (isMobileMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isMobileMenuOpen]);
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: BarChart3, roles: ['admin', 'editor', 'viewer'] },
@@ -48,8 +91,8 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange }) => {
     }
   };
 
-  return (
-    <div className="w-64 bg-white border-r border-gray-200 h-screen flex flex-col">
+  const SidebarContent = () => (
+    <>
       <div className="p-6 border-b border-gray-200">
         <h1 className="text-xl font-bold text-gray-900">GOAT Analytics</h1>
         <div className="mt-3 flex items-center gap-2">
@@ -68,7 +111,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange }) => {
             return (
               <button
                 key={item.id}
-                onClick={() => onTabChange(item.id)}
+                onClick={() => handleTabChange(item.id)}
                 className={clsx(
                   'w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-all duration-200',
                   activeTab === item.id
@@ -108,7 +151,48 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange }) => {
           <span className="text-sm font-medium">Sign Out</span>
         </button>
       </div>
-    </div>
+    </>
+  );
+
+  return (
+    <>
+      {/* Mobile Menu Button */}
+      <button
+        id="mobile-menu-button"
+        onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+        className="md:hidden fixed top-4 left-4 z-50 p-2 bg-white rounded-lg shadow-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+        aria-label="Toggle menu"
+      >
+        {isMobileMenuOpen ? (
+          <X className="w-6 h-6 text-gray-600" />
+        ) : (
+          <Menu className="w-6 h-6 text-gray-600" />
+        )}
+      </button>
+
+      {/* Desktop Sidebar */}
+      <div className="hidden md:flex w-64 bg-white border-r border-gray-200 h-screen flex-col">
+        <SidebarContent />
+      </div>
+
+      {/* Mobile Sidebar Overlay */}
+      {isMobileMenuOpen && (
+        <div className="md:hidden fixed inset-0 z-40 bg-black bg-opacity-50 transition-opacity">
+          <div
+            id="mobile-sidebar"
+            className={clsx(
+              'fixed left-0 top-0 h-full w-64 bg-white border-r border-gray-200 flex flex-col transform transition-transform duration-300 ease-in-out',
+              isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+            )}
+          >
+            <SidebarContent />
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Content Padding */}
+      <div className="md:hidden h-16" />
+    </>
   );
 };
 

@@ -87,18 +87,20 @@ const Dashboard: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-50 relative">
       <Sidebar 
         activeTab={activeTab} 
         onTabChange={setActiveTab}
       />
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto md:ml-0">
         {(activeTab === 'dashboard' || activeTab === 'products') && (
-          <div className="p-6 pb-0">
+          <div className="p-4 md:p-6 pb-0 pt-20 md:pt-6">
             <FilterPanel filters={filters} onFiltersChange={setFilters} />
           </div>
         )}
-        {renderContent()}
+        <div className="pt-16 md:pt-0">
+          {renderContent()}
+        </div>
       </div>
     </div>
   );
