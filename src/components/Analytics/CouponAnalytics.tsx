@@ -4,6 +4,39 @@ import { Download, Filter, Search, TrendingUp, Ticket, Users, DollarSign } from 
 import { format } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
+// Define helper function at the top level
+const getTypeColor = (type: string): string => {
+  const colors = {
+    'low': '#10B981',
+    'mid': '#3B82F6',
+    'high': '#F59E0B',
+    'pro': '#8B5CF6',
+    'extreme': '#EF4444'
+  };
+  return colors[type as keyof typeof colors] || '#6B7280';
+};
+
+const convertToCSV = (data: any[]): string => {
+  if (!data.length) return '';
+  
+  const headers = ['ID', 'Category', 'Brand', 'Model', 'Total Coupons', 'Used Coupons', 'Usage Rate', 'Total Value', 'Avg Discount'];
+  const csvContent = [
+    headers.join(','),
+    ...data.map(row => [
+      row.id,
+      row.category,
+      row.brand,
+      row.model,
+      row.totalCoupons,
+      row.usedCoupons,
+      row.usageRate.toFixed(2),
+      row.totalValue,
+      row.avgDiscount.toFixed(2)
+    ].join(','))
+  ].join('\n');
+  return csvContent;
+};
+
 const CouponAnalytics: React.FC = () => {
   const [analytics, setAnalytics] = useState<CouponAnalyticsType[]>([]);
   const [couponLinks, setCouponLinks] = useState<any[]>([]);
@@ -86,36 +119,6 @@ const CouponAnalytics: React.FC = () => {
     a.click();
     window.URL.revokeObjectURL(url);
     document.body.removeChild(a);
-  };
-
-  const convertToCSV = (data: any[]) => {
-    const headers = ['ID', 'Category', 'Brand', 'Model', 'Total Coupons', 'Used Coupons', 'Usage Rate', 'Total Value', 'Avg Discount'];
-    const csvContent = [
-      headers.join(','),
-      ...data.map(row => [
-        row.id,
-        row.category,
-        row.brand,
-        row.model,
-        row.totalCoupons,
-        row.usedCoupons,
-        row.usageRate.toFixed(2),
-        row.totalValue,
-        row.avgDiscount.toFixed(2)
-      ].join(','))
-    ].join('\n');
-    return csvContent;
-  };
-
-  const getTypeColor = (type: string) => {
-    const colors = {
-      'low': '#10B981',
-      'mid': '#3B82F6',
-      'high': '#F59E0B',
-      'pro': '#8B5CF6',
-      'extreme': '#EF4444'
-    };
-    return colors[type as keyof typeof colors] || '#6B7280';
   };
 
   if (loading) {

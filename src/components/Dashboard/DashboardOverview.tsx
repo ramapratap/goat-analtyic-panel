@@ -11,6 +11,13 @@ interface DashboardOverviewProps {
   onRefreshQrScans: () => void;
 }
 
+// Helper function to check if record is an initial request
+const isInitialRequest = (searchSource: string): boolean => {
+  if (!searchSource) return false;
+  return searchSource.toLowerCase().includes('intial request') || 
+         searchSource.toLowerCase().includes('initial request');
+};
+
 const LoadingSkeleton: React.FC<{ className?: string }> = ({ className = "" }) => (
   <div className={`animate-pulse bg-gray-200 rounded ${className}`}></div>
 );
@@ -51,21 +58,26 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
         generateCouponAnalytics()
       ]);
 
-      // Filter real users and INITIAL REQUEST records
+      // Filter INITIAL REQUEST records for API hits count
       const initialRequests = productRecords.filter(record => 
         record.user_id && 
         isRealUser(record.user_id) &&
-        record.search_source?.includes('INITIAL REQUEST')
+        isInitialRequest(record.search_source)
       );
 
+      // Filter real product records (excluding INITIAL REQUEST)
       const realProductRecords = productRecords.filter(record => 
         record.user_id && 
         isRealUser(record.user_id) &&
-        !record.search_source?.includes('INITIAL REQUEST')
+        !isInitialRequest(record.search_source)
       );
 
       // Calculate metrics
-      const uniqueUsers = new Set(realProductRecords.map(r => r.user_id)).size;
+      const uniqueUsers = new Set([
+        ...initialRequests.map(r => r.user_id),
+        ...realProductRecords.map(r => r.user_id)
+      ]).size;
+      
       const totalApiHits = initialRequests.length;
       
       // Softline vs Hardline analysis

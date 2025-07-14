@@ -24,6 +24,43 @@ interface ProductRecord {
   coupon_code: string | null;
 }
 
+// Define helper functions at the top level
+const getInputTypeColor = (type: string): string => {
+  const colors = {
+    'image_url': '#10B981',
+    'amazon_url': '#F59E0B',
+    'text': '#3B82F6',
+    'flipkart_url': '#8B5CF6',
+    'unknown': '#6B7280'
+  };
+  return colors[type as keyof typeof colors] || '#6B7280';
+};
+
+const isInitialRequest = (searchSource: string): boolean => {
+  if (!searchSource) return false;
+  return searchSource.toLowerCase().includes('intial request') || 
+         searchSource.toLowerCase().includes('initial request');
+};
+
+const convertToCSV = (data: any[]): string => {
+  if (!data.length) return '';
+  
+  const headers = ['ID', 'User ID', 'Product Name', 'Category', 'Input Type', 'Timestamp', 'Device Info'];
+  const csvContent = [
+    headers.join(','),
+    ...data.map(row => [
+      row._id,
+      maskPhoneNumber(row.user_id),
+      `"${row.product_name}"`,
+      categorizeProduct(row.Category, row.product_name),
+      row.input_type,
+      row.timestamp,
+      `"${row.device_info}"`
+    ].join(','))
+  ].join('\n');
+  return csvContent;
+};
+
 const ProductAnalytics: React.FC = () => {
   const [productRecords, setProductRecords] = useState<ProductRecord[]>([]);
   const [filteredRecords, setFilteredRecords] = useState<ProductRecord[]>([]);
@@ -53,7 +90,7 @@ const ProductAnalytics: React.FC = () => {
       const filteredRecords = records.filter(record => 
         record.user_id && 
         isRealUser(record.user_id) &&
-        !record.search_source?.includes('INITIAL REQUEST')
+        !isInitialRequest(record.search_source)
       );
 
       // Get image uploads
@@ -61,7 +98,8 @@ const ProductAnalytics: React.FC = () => {
         record.user_id &&
         isRealUser(record.user_id) &&
         record.input_type === 'image_url' &&
-        record.image_path
+        record.image_path &&
+        !isInitialRequest(record.search_source)
       );
 
       setProductRecords(filteredRecords);
@@ -171,17 +209,6 @@ const ProductAnalytics: React.FC = () => {
     })).sort((a, b) => b.count - a.count);
   }, [filteredRecords]);
 
-  const getInputTypeColor = (type: string) => {
-    const colors = {
-      'image_url': '#10B981',
-      'amazon_url': '#F59E0B',
-      'text': '#3B82F6',
-      'flipkart_url': '#8B5CF6',
-      'unknown': '#6B7280'
-    };
-    return colors[type as keyof typeof colors] || '#6B7280';
-  };
-
   const exportData = (format: 'csv' | 'json') => {
     const dataToExport = format === 'csv' 
       ? convertToCSV(filteredRecords)
@@ -199,23 +226,6 @@ const ProductAnalytics: React.FC = () => {
     a.click();
     window.URL.revokeObjectURL(url);
     document.body.removeChild(a);
-  };
-
-  const convertToCSV = (data: any[]) => {
-    const headers = ['ID', 'User ID', 'Product Name', 'Category', 'Input Type', 'Timestamp', 'Device Info'];
-    const csvContent = [
-      headers.join(','),
-      ...data.map(row => [
-        row._id,
-        maskPhoneNumber(row.user_id),
-        `"${row.product_name}"`,
-        categorizeProduct(row.Category, row.product_name),
-        row.input_type,
-        row.timestamp,
-        `"${row.device_info}"`
-      ].join(','))
-    ].join('\n');
-    return csvContent;
   };
 
   const inputTypes = [...new Set(productRecords.map(r => r.input_type))];
