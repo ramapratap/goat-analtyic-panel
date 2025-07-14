@@ -2,36 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Package, TrendingUp, Users, DollarSign, Search, Filter, Download, RefreshCw } from 'lucide-react';
 
-interface CouponData {
-  _id: string;
-  id: string;
-  Category: string;
-  Brand: string;
-  Model: string;
-  'FSN List': string[];
-  'Min Range': string;
-  'Max Range': string;
-  Coupon_Value_low: string;
-  Coupon_Value_mid: string;
-  Coupon_Value_high: string;
-  Coupon_Value_pro: string;
-  Coupon_Value_extreme: string;
-  Coupon_Count_low: string;
-  Coupon_Count_mid: string;
-  Coupon_Count_high: string;
-  Coupon_Count_pro: string;
-  Coupon_Count_extreme: string;
-}
-
-interface CouponLink {
-  _id: string;
-  id: string;
-  'Coupon Link': string;
-  'Coupon type': string;
-  is_used?: boolean;
-  timestamp?: string;
-}
-
 interface CouponAnalytics {
   totalCoupons: number;
   totalUsed: number;
@@ -46,6 +16,8 @@ interface CouponAnalytics {
     model: string;
     usageRate: number;
     totalValue: number;
+    totalCoupons: number;
+    usedCoupons: number;
   }>;
   totalRecords: number;
   lastUpdated: string;
@@ -68,7 +40,7 @@ export default function CouponAnalytics() {
       setError(null);
       
       console.log('🔍 Fetching coupon analytics...');
-      const response = await fetch('/api/analytics/coupons');
+      const response = await fetch('/api/analytics/coupons?summary=true');
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -77,7 +49,31 @@ export default function CouponAnalytics() {
       const data = await response.json();
       console.log('📊 Received coupon analytics:', data);
       
-      setAnalytics(data);
+      if (data.analytics && Array.isArray(data.analytics)) {
+        // Process the analytics data
+        const processedAnalytics: CouponAnalytics = {
+          totalCoupons: data.summary?.totalCoupons || 0,
+          totalUsed: data.summary?.totalUsed || 0,
+          totalValue: data.summary?.totalValue || 0,
+          avgUsageRate: data.summary?.avgUsageRate || 0,
+          typeDistribution: data.summary?.typeDistribution || {},
+          categoryDistribution: {},
+          topPerforming: data.analytics.slice(0, 20),
+          totalRecords: data.totalRecords || 0,
+          lastUpdated: data.lastUpdated || new Date().toISOString()
+        };
+
+        // Calculate category distribution
+        data.analytics.forEach((item: any) => {
+          const category = item.category || 'Unknown';
+          processedAnalytics.categoryDistribution[category] = 
+            (processedAnalytics.categoryDistribution[category] || 0) + item.totalCoupons;
+        });
+
+        setAnalytics(processedAnalytics);
+      } else {
+        throw new Error('Invalid data format received');
+      }
     } catch (err) {
       console.error('❌ Error fetching coupon analytics:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch coupon analytics');
@@ -104,7 +100,7 @@ export default function CouponAnalytics() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `coupon-analytics.${format}`;
+    a.download = `coupon-analytics-${new Date().toISOString().split('T')[0]}.${format}`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -169,17 +165,28 @@ export default function CouponAnalytics() {
   const typeDistributionData = Object.entries(analytics.typeDistribution).map(([type, count]) => ({
     name: type,
     value: count,
-    percentage: ((count / analytics.totalCoupons) * 100).toFixed(1)
+    percentage: analytics.totalCoupons > 0 ? ((count / analytics.totalCoupons) * 100).toFixed(1) : '0'
   }));
 
   const categoryPerformanceData = Object.entries(analytics.categoryDistribution)
     .map(([category, count]) => ({
       category,
       count,
-      percentage: ((count / analytics.totalCoupons) * 100).toFixed(1)
+      percentage: analytics.totalCoupons > 0 ? ((count / analytics.totalCoupons) * 100).toFixed(1) : '0'
     }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 10);
+
+  const filteredTopPerforming = analytics.topPerforming.filter(item => {
+    const matchesSearch = searchTerm === '' || 
+      item.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.brand.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.model.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory;
+    
+    return matchesSearch && matchesCategory;
+  });
 
   return (
     <div className="p-6 space-y-6">
@@ -188,7 +195,7 @@ export default function CouponAnalytics() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Coupon Analytics</h1>
           <p className="text-gray-600 mt-1">
-            Last updated: {analytics.lastUpdated}
+            Last updated: {new Date(analytics.lastUpdated).toLocaleString()}
           </p>
         </div>
         <div className="flex space-x-2">
@@ -205,6 +212,13 @@ export default function CouponAnalytics() {
           >
             <Download className="w-4 h-4" />
             <span>Export JSON</span>
+          </button>
+          <button
+            onClick={fetchCouponAnalytics}
+            className="flex items-center space-x-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span>Refresh</span>
           </button>
         </div>
       </div>
@@ -470,13 +484,10 @@ export default function CouponAnalytics() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Total Value
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Types
-                    </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {analytics.topPerforming.slice(0, 20).map((coupon, index) => (
+                  {filteredTopPerforming.slice(0, 20).map((coupon, index) => (
                     <tr key={coupon.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         {coupon.id}
@@ -491,10 +502,10 @@ export default function CouponAnalytics() {
                         {coupon.model}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {coupon.totalValue}
+                        {coupon.totalCoupons.toLocaleString()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {Math.round((coupon.usageRate / 100) * coupon.totalValue)}
+                        {coupon.usedCoupons.toLocaleString()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
@@ -512,28 +523,17 @@ export default function CouponAnalytics() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         ₹{coupon.totalValue.toLocaleString()}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex space-x-1">
-                          {['low', 'mid', 'high', 'pro'].map(type => (
-                            <span
-                              key={type}
-                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                type === 'low' ? 'bg-green-100 text-green-800' :
-                                type === 'mid' ? 'bg-blue-100 text-blue-800' :
-                                type === 'high' ? 'bg-yellow-100 text-yellow-800' :
-                                'bg-purple-100 text-purple-800'
-                              }`}
-                            >
-                              {type}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+            
+            {filteredTopPerforming.length === 0 && (
+              <div className="text-center py-12 text-gray-500">
+                No coupons found matching your criteria
+              </div>
+            )}
           </div>
         </div>
       )}

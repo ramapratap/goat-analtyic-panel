@@ -195,7 +195,7 @@ router.get('/products', async (req: AuthRequest, res) => {
 // FIXED Coupon analytics endpoint
 router.get('/coupons', async (req: AuthRequest, res) => {
   try {
-    const { type, limit = 50, summary } = req.query;
+    const { type, limit = 50, summary = 'false' } = req.query;
     const cacheKey = `coupons_${type || 'all'}_${limit}`;
     const cachedData = getCachedData(cacheKey);
     
@@ -203,73 +203,45 @@ router.get('/coupons', async (req: AuthRequest, res) => {
       return res.json(cachedData);
     }
 
-    console.log('🔄 Fetching coupon analytics from database...');
+    console.log('🔄 Fetching coupon analytics...');
 
-    // Import the coupon service functions with proper error handling
-    let generateOptimizedCouponAnalytics, getCouponSummaryStats;
-    try {
-      const couponService = await import('../services/couponService');
-      generateOptimizedCouponAnalytics = couponService.generateOptimizedCouponAnalytics;
-      getCouponSummaryStats = couponService.getCouponSummaryStats;
-      console.log('✅ Coupon service imported successfully');
-    } catch (importError) {
-      console.error('❌ Error importing coupon service:', importError);
-      return res.status(500).json({ error: 'Failed to load coupon service' });
-    }
+    // Import coupon service functions
+    const { generateOptimizedCouponAnalytics, getCouponSummaryStats } = await import('../services/couponService');
     
     console.log('📊 Generating coupon analytics...');
-    const [couponAnalytics, summaryStats] = await Promise.allSettled([
+    const [analyticsResult, summaryResult] = await Promise.allSettled([
       generateOptimizedCouponAnalytics(),
-      summary ? getCouponSummaryStats() : Promise.resolve(null)
+      summary === 'true' ? getCouponSummaryStats() : Promise.resolve(null)
     ]);
     
-    // Extract results from PromiseSettledResult
-    const analyticsResult = couponAnalytics.status === 'fulfilled' ? couponAnalytics.value : [];
-    const summaryResult = summaryStats.status === 'fulfilled' ? summaryStats.value : null;
+    const analytics = analyticsResult.status === 'fulfilled' ? analyticsResult.value : [];
+    const summaryStats = summaryResult.status === 'fulfilled' ? summaryResult.value : null;
     
-    if (couponAnalytics.status === 'rejected') {
-      console.error('❌ Error generating coupon analytics:', couponAnalytics.reason);
+    if (analyticsResult.status === 'rejected') {
+      console.error('❌ Analytics error:', analyticsResult.reason);
     }
-    if (summaryStats.status === 'rejected') {
-      console.error('❌ Error generating summary stats:', summaryStats.reason);
+    if (summaryResult.status === 'rejected') {
+      console.error('❌ Summary error:', summaryResult.reason);
     }
     
-    let filteredAnalytics = analyticsResult;
+    let filteredAnalytics = analytics;
     if (type) {
-      filteredAnalytics = analyticsResult.filter((c: any) => 
+      filteredAnalytics = analytics.filter((c: any) => 
         Object.keys(c.couponTypes).some(t => t.toLowerCase() === type.toString().toLowerCase())
       );
     }
 
     const limitedAnalytics = filteredAnalytics.slice(0, parseInt(limit.toString()));
 
-    const analyticsummary = {
-      totalCoupons: filteredAnalytics.reduce((sum: number, c: any) => sum + (c.totalCoupons || 0), 0),
-      totalUsed: filteredAnalytics.reduce((sum: number, c: any) => sum + (c.usedCoupons || 0), 0),
-      totalValue: filteredAnalytics.reduce((sum: number, c: any) => sum + (c.totalValue || 0), 0),
-      avgUsageRate: filteredAnalytics.length > 0 
-        ? filteredAnalytics.reduce((sum: number, c: any) => sum + (c.usageRate || 0), 0) / filteredAnalytics.length 
-        : 0,
-      typeDistribution: {}
-    };
-
     const result = {
       analytics: limitedAnalytics,
-      summary: summary ? summaryResult : analyticsummary,
+      summary: summaryStats,
       totalRecords: filteredAnalytics.length,
       lastUpdated: new Date().toISOString(),
-      debug: {
-        analyticsCount: analyticsResult.length,
-        filteredCount: filteredAnalytics.length,
-        summaryAvailable: !!summaryResult
-      }
+      status: 'success'
     };
 
-    console.log('✅ Coupon analytics response prepared:', {
-      analyticsCount: result.analytics.length,
-      totalRecords: result.totalRecords,
-      hasSummary: !!result.summary
-    });
+    console.log(`✅ Returning ${result.analytics.length} analytics records`);
 
     setCachedData(cacheKey, result);
     res.json(result);
@@ -277,8 +249,7 @@ router.get('/coupons', async (req: AuthRequest, res) => {
     console.error('❌ Coupon analytics error:', error);
     res.status(500).json({ 
       error: 'Failed to fetch coupon analytics',
-      details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
-      timestamp: new Date().toISOString()
+      details: process.env.NODE_ENV === 'development' ? (error as Error).message : 'Internal server error'
     });
   }
 });
