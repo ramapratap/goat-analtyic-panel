@@ -4,7 +4,7 @@ import { Download, Filter, Search, TrendingUp, Ticket, Users, DollarSign } from 
 import { format } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
-// Define helper function at the top level
+// Helper functions at the top level
 const getTypeColor = (type: string): string => {
   const colors = {
     'low': '#10B981',
@@ -23,18 +23,30 @@ const convertToCSV = (data: any[]): string => {
   const csvContent = [
     headers.join(','),
     ...data.map(row => [
-      row.id,
-      row.category,
-      row.brand,
-      row.model,
-      row.totalCoupons,
-      row.usedCoupons,
-      row.usageRate.toFixed(2),
-      row.totalValue,
-      row.avgDiscount.toFixed(2)
+      row.id || '',
+      row.category || '',
+      row.brand || '',
+      row.model || '',
+      row.totalCoupons || 0,
+      row.usedCoupons || 0,
+      (row.usageRate || 0).toFixed(2),
+      row.totalValue || 0,
+      (row.avgDiscount || 0).toFixed(2)
     ].join(','))
   ].join('\n');
   return csvContent;
+};
+
+// Helper function to safely render values
+const safeRender = (value: any): string => {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'object') {
+    if (value.$oid) return value.$oid;
+    return JSON.stringify(value);
+  }
+  return String(value);
 };
 
 const CouponAnalytics: React.FC = () => {
@@ -70,10 +82,10 @@ const CouponAnalytics: React.FC = () => {
   };
 
   const filteredAnalytics = analytics.filter(item => {
-    const matchesSearch = item.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         item.brand.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         item.model.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesType = selectedType === 'all' || Object.keys(item.couponTypes).includes(selectedType);
+    const matchesSearch = (item.category || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (item.brand || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (item.model || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesType = selectedType === 'all' || Object.keys(item.couponTypes || {}).includes(selectedType);
     const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory;
     
     return matchesSearch && matchesType && matchesCategory;
@@ -90,10 +102,10 @@ const CouponAnalytics: React.FC = () => {
   const types = ['low', 'mid', 'high', 'pro', 'extreme'];
 
   const chartData = analytics.slice(0, 10).map(item => ({
-    name: `${item.brand} ${item.model}`.substring(0, 15),
-    total: item.totalCoupons,
-    used: item.usedCoupons,
-    usageRate: item.usageRate
+    name: `${item.brand || ''} ${item.model || ''}`.substring(0, 15),
+    total: item.totalCoupons || 0,
+    used: item.usedCoupons || 0,
+    usageRate: item.usageRate || 0
   }));
 
   const typeDistributionData = Object.entries(summary.typeDistribution || {}).map(([type, count]) => ({
@@ -158,7 +170,7 @@ const CouponAnalytics: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Total Coupons</p>
-              <p className="text-2xl font-bold text-gray-900">{summary.totalCoupons?.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-gray-900">{(summary.totalCoupons || 0).toLocaleString()}</p>
             </div>
             <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center">
               <Ticket className="w-6 h-6 text-blue-600" />
@@ -170,7 +182,7 @@ const CouponAnalytics: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Coupons Used</p>
-              <p className="text-2xl font-bold text-gray-900">{summary.totalUsed?.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-gray-900">{(summary.totalUsed || 0).toLocaleString()}</p>
             </div>
             <div className="w-12 h-12 bg-green-50 rounded-lg flex items-center justify-center">
               <Users className="w-6 h-6 text-green-600" />
@@ -182,7 +194,7 @@ const CouponAnalytics: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Total Savings</p>
-              <p className="text-2xl font-bold text-gray-900">₹{summary.totalValue?.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-gray-900">₹{(summary.totalValue || 0).toLocaleString()}</p>
             </div>
             <div className="w-12 h-12 bg-yellow-50 rounded-lg flex items-center justify-center">
               <DollarSign className="w-6 h-6 text-yellow-600" />
@@ -194,7 +206,7 @@ const CouponAnalytics: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Avg Usage Rate</p>
-              <p className="text-2xl font-bold text-gray-900">{summary.averageUsageRate?.toFixed(1)}%</p>
+              <p className="text-2xl font-bold text-gray-900">{(summary.averageUsageRate || 0).toFixed(1)}%</p>
             </div>
             <div className="w-12 h-12 bg-purple-50 rounded-lg flex items-center justify-center">
               <TrendingUp className="w-6 h-6 text-purple-600" />
@@ -299,29 +311,29 @@ const CouponAnalytics: React.FC = () => {
             <tbody>
               {paginatedAnalytics.map((item, index) => (
                 <tr key={item.id} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-                  <td className="py-3 px-4 text-sm text-gray-900 font-mono">{item.id}</td>
-                  <td className="py-3 px-4 text-sm text-gray-900">{item.category}</td>
-                  <td className="py-3 px-4 text-sm text-gray-900">{item.brand}</td>
-                  <td className="py-3 px-4 text-sm text-gray-900">{item.model}</td>
-                  <td className="py-3 px-4 text-sm text-gray-900">{item.totalCoupons}</td>
-                  <td className="py-3 px-4 text-sm text-gray-900">{item.usedCoupons}</td>
+                  <td className="py-3 px-4 text-sm text-gray-900 font-mono">{safeRender(item.id)}</td>
+                  <td className="py-3 px-4 text-sm text-gray-900">{safeRender(item.category)}</td>
+                  <td className="py-3 px-4 text-sm text-gray-900">{safeRender(item.brand)}</td>
+                  <td className="py-3 px-4 text-sm text-gray-900">{safeRender(item.model)}</td>
+                  <td className="py-3 px-4 text-sm text-gray-900">{item.totalCoupons || 0}</td>
+                  <td className="py-3 px-4 text-sm text-gray-900">{item.usedCoupons || 0}</td>
                   <td className="py-3 px-4">
                     <div className="flex items-center gap-2">
                       <div className="w-16 bg-gray-200 rounded-full h-2">
                         <div
                           className="bg-green-500 h-2 rounded-full"
-                          style={{ width: `${Math.min(item.usageRate, 100)}%` }}
+                          style={{ width: `${Math.min(item.usageRate || 0, 100)}%` }}
                         />
                       </div>
                       <span className="text-sm text-gray-600">
-                        {item.usageRate.toFixed(1)}%
+                        {(item.usageRate || 0).toFixed(1)}%
                       </span>
                     </div>
                   </td>
-                  <td className="py-3 px-4 text-sm text-gray-900">₹{item.totalValue.toLocaleString()}</td>
+                  <td className="py-3 px-4 text-sm text-gray-900">₹{(item.totalValue || 0).toLocaleString()}</td>
                   <td className="py-3 px-4">
                     <div className="flex flex-wrap gap-1">
-                      {Object.keys(item.couponTypes).map(type => (
+                      {Object.keys(item.couponTypes || {}).map(type => (
                         <span
                           key={type}
                           className="px-2 py-1 rounded-full text-xs font-medium"

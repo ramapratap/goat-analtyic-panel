@@ -5,7 +5,7 @@ import { format } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 interface ProductRecord {
-  _id: string;
+  _id: string | { $oid: string };
   user_id: string;
   product_name: string;
   price: string;
@@ -24,7 +24,7 @@ interface ProductRecord {
   coupon_code: string | null;
 }
 
-// Define helper functions at the top level
+// Helper functions at the top level
 const getInputTypeColor = (type: string): string => {
   const colors = {
     'image_url': '#10B981',
@@ -49,16 +49,37 @@ const convertToCSV = (data: any[]): string => {
   const csvContent = [
     headers.join(','),
     ...data.map(row => [
-      row._id,
+      extractId(row._id),
       maskPhoneNumber(row.user_id),
-      `"${row.product_name}"`,
+      `"${row.product_name || ''}"`,
       categorizeProduct(row.Category, row.product_name),
-      row.input_type,
-      row.timestamp,
-      `"${row.device_info}"`
+      row.input_type || '',
+      row.timestamp || '',
+      `"${row.device_info || ''}"`
     ].join(','))
   ].join('\n');
   return csvContent;
+};
+
+// Helper function to extract ID from MongoDB ObjectId or string
+const extractId = (id: string | { $oid: string } | any): string => {
+  if (!id) return '';
+  if (typeof id === 'string') return id;
+  if (typeof id === 'object' && id.$oid) return id.$oid;
+  if (typeof id === 'object' && id._id) return extractId(id._id);
+  return String(id);
+};
+
+// Helper function to safely render values
+const safeRender = (value: any): string => {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'object') {
+    if (value.$oid) return value.$oid;
+    return JSON.stringify(value);
+  }
+  return String(value);
 };
 
 const ProductAnalytics: React.FC = () => {
@@ -90,7 +111,7 @@ const ProductAnalytics: React.FC = () => {
       const filteredRecords = records.filter(record => 
         record.user_id && 
         isRealUser(record.user_id) &&
-        !isInitialRequest(record.search_source)
+        !isInitialRequest(record.search_source || '')
       );
 
       // Get image uploads
@@ -99,7 +120,7 @@ const ProductAnalytics: React.FC = () => {
         isRealUser(record.user_id) &&
         record.input_type === 'image_url' &&
         record.image_path &&
-        !isInitialRequest(record.search_source)
+        !isInitialRequest(record.search_source || '')
       );
 
       setProductRecords(filteredRecords);
@@ -116,9 +137,9 @@ const ProductAnalytics: React.FC = () => {
 
     if (searchTerm) {
       filtered = filtered.filter(record =>
-        record.product_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        record.user_id?.includes(searchTerm) ||
-        record.Category?.toLowerCase().includes(searchTerm.toLowerCase())
+        (record.product_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (record.user_id || '').includes(searchTerm) ||
+        (record.Category || '').toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
@@ -432,15 +453,15 @@ const ProductAnalytics: React.FC = () => {
               </thead>
               <tbody>
                 {paginatedRecords.map((record, index) => (
-                  <tr key={record._id} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+                  <tr key={extractId(record._id)} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
                     <td className="py-3 px-4">
                       <div>
-                        <p className="text-sm font-medium text-gray-900">{record.product_name}</p>
-                        <p className="text-xs text-gray-600">{record._id}</p>
+                        <p className="text-sm font-medium text-gray-900">{safeRender(record.product_name)}</p>
+                        <p className="text-xs text-gray-600">{extractId(record._id)}</p>
                       </div>
                     </td>
                     <td className="py-3 px-4 text-sm text-gray-900 font-mono">
-                      {maskPhoneNumber(record.user_id)}
+                      {maskPhoneNumber(safeRender(record.user_id))}
                     </td>
                     <td className="py-3 px-4 text-sm text-gray-900">
                       {categorizeProduct(record.Category, record.product_name)}
@@ -450,14 +471,14 @@ const ProductAnalytics: React.FC = () => {
                         {record.input_type === 'image_url' && <Image className="w-4 h-4" />}
                         {record.input_type === 'amazon_url' && <Link className="w-4 h-4" />}
                         {record.input_type === 'text' && <Type className="w-4 h-4" />}
-                        <span className="text-sm text-gray-900">{record.input_type}</span>
+                        <span className="text-sm text-gray-900">{safeRender(record.input_type)}</span>
                       </span>
                     </td>
                     <td className="py-3 px-4 text-sm text-gray-900">
-                      {format(new Date(record.timestamp), 'MMM dd, yyyy HH:mm')}
+                      {record.timestamp ? format(new Date(record.timestamp), 'MMM dd, yyyy HH:mm') : 'N/A'}
                     </td>
                     <td className="py-3 px-4 text-sm text-gray-900">
-                      {record.device_info}
+                      {safeRender(record.device_info)}
                     </td>
                   </tr>
                 ))}
@@ -517,7 +538,7 @@ const ProductAnalytics: React.FC = () => {
                     <td className="py-3 px-4 text-sm text-gray-900">{user.categories.size}</td>
                     <td className="py-3 px-4 text-sm text-gray-900">{user.inputTypes.size}</td>
                     <td className="py-3 px-4 text-sm text-gray-900">
-                      {format(new Date(user.lastActivity), 'MMM dd, yyyy HH:mm')}
+                      {user.lastActivity ? format(new Date(user.lastActivity), 'MMM dd, yyyy HH:mm') : 'N/A'}
                     </td>
                   </tr>
                 ))}
@@ -532,12 +553,12 @@ const ProductAnalytics: React.FC = () => {
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Image Uploads</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {imageUploads.slice(0, 20).map((record) => (
-              <div key={record._id} className="border border-gray-200 rounded-lg p-4">
+              <div key={extractId(record._id)} className="border border-gray-200 rounded-lg p-4">
                 <div className="aspect-square bg-gray-100 rounded-lg mb-3 flex items-center justify-center">
                   {record.image_path ? (
                     <img 
                       src={record.image_path} 
-                      alt={record.product_name}
+                      alt={safeRender(record.product_name)}
                       className="w-full h-full object-cover rounded-lg"
                       onError={(e) => {
                         (e.target as HTMLImageElement).style.display = 'none';
@@ -549,9 +570,11 @@ const ProductAnalytics: React.FC = () => {
                     <Image className="w-8 h-8" />
                   </div>
                 </div>
-                <p className="text-sm font-medium text-gray-900 truncate">{record.product_name}</p>
-                <p className="text-xs text-gray-600">{maskPhoneNumber(record.user_id)}</p>
-                <p className="text-xs text-gray-500">{format(new Date(record.timestamp), 'MMM dd, yyyy')}</p>
+                <p className="text-sm font-medium text-gray-900 truncate">{safeRender(record.product_name)}</p>
+                <p className="text-xs text-gray-600">{maskPhoneNumber(safeRender(record.user_id))}</p>
+                <p className="text-xs text-gray-500">
+                  {record.timestamp ? format(new Date(record.timestamp), 'MMM dd, yyyy') : 'N/A'}
+                </p>
               </div>
             ))}
           </div>
