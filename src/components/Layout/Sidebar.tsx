@@ -27,7 +27,6 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange }) => {
     { id: 'products', label: 'Product Analytics', icon: ShoppingCart, roles: ['admin', 'editor', 'viewer'] },
     { id: 'product-feedback', label: 'Product Feedback', icon: TrendingUp, roles: ['admin', 'editor', 'viewer'] },
     { id: 'coupons', label: 'Coupon Analytics', icon: Ticket, roles: ['admin', 'editor', 'viewer'] },
-    { id: 'hero-deals', label: 'Hero Deals', icon: TrendingUp, roles: ['admin', 'editor', 'viewer'] },
     { id: 'user-flows', label: 'User Flows', icon: TrendingUp, roles: ['admin', 'editor', 'viewer'] },
     { id: 'users', label: 'User Management', icon: Users, roles: ['admin'] },
     { id: 'settings', label: 'Settings', icon: Settings, roles: ['admin', 'editor'] },
@@ -75,12 +74,12 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange }) => {
                 className={clsx(
                   'w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-all duration-200',
                   activeTab === item.id
-                    ? 'bg-blue-50 text-blue-700 border-l-4 border-blue-600'
-                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                    : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
                 )}
               >
                 <Icon className="w-5 h-5" />
-                {item.label}
+                <span className="font-medium">{item.label}</span>
               </button>
             );
           })}
@@ -88,22 +87,27 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange }) => {
 
       <div className="p-4 border-t border-gray-200">
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-            <span className="text-white text-sm font-medium">
-              {user?.name?.charAt(0) || user?.email?.charAt(0)}
+          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+            <span className="text-sm font-medium text-blue-700">
+              {user?.email?.charAt(0).toUpperCase()}
             </span>
           </div>
-          <div>
-            <p className="text-sm font-medium text-gray-900">{user?.name || user?.email}</p>
-            <p className="text-xs text-gray-500">{user?.email}</p>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-gray-900 truncate">
+              {user?.email}
+            </p>
+            <p className="text-xs text-gray-500 capitalize">
+              {user?.role} Access
+            </p>
           </div>
         </div>
+        
         <button
           onClick={logout}
-          className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-600 hover:bg-red-50 hover:text-red-700 transition-all duration-200"
+          className="w-full flex items-center gap-3 px-4 py-2 text-gray-700 hover:bg-red-50 hover:text-red-700 rounded-lg transition-all duration-200"
         >
-          <LogOut className="w-5 h-5" />
-          Sign Out
+          <LogOut className="w-4 h-4" />
+          <span className="text-sm font-medium">Sign Out</span>
         </button>
       </div>
     </div>

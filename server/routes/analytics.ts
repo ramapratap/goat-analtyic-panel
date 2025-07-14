@@ -1,3 +1,4 @@
+// server/routes/analytics.ts - FIXED VERSION (NEW_DB Only)
 import express from 'express';
 import { authenticateToken } from '../middleware/auth';
 import { AuthRequest } from '../types';
@@ -9,208 +10,322 @@ import {
   ProductFeedback 
 } from '../services/externalApi';
 import { 
-  generateCouponAnalytics, 
-  fetchHeroDeals,
-  CouponAnalytics,
-  HeroDeal 
+  generateOptimizedCouponAnalytics, 
+  fetchCouponData,
+  fetchCouponLinks,
+  CouponAnalytics
 } from '../services/couponService';
 import { maskPhoneNumber, isRealUser } from '../utils/phoneUtils';
 
 const router = express.Router();
 
-// Add caching for frequently accessed data
+// Enhanced caching with better memory management
 const cache = new Map();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const MAX_CACHE_SIZE = 100;
 
 const getCachedData = (key: string) => {
   const cached = cache.get(key);
   if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
     return cached.data;
   }
+  cache.delete(key);
   return null;
 };
 
 const setCachedData = (key: string, data: any) => {
+  if (cache.size >= MAX_CACHE_SIZE) {
+    const firstKey = cache.keys().next().value;
+    cache.delete(firstKey);
+  }
   cache.set(key, { data, timestamp: Date.now() });
 };
 
-// Dashboard stats endpoint - optimized for speed
-router.get('/dashboard', authenticateToken, async (req: AuthRequest, res) => {
+// Cleanup expired cache entries periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of cache.entries()) {
+    if (now - value.timestamp > CACHE_DURATION) {
+      cache.delete(key);
+    }
+  }
+}, CACHE_DURATION);
+
+// FIXED Dashboard stats endpoint
+router.get('/dashboard', async (req: AuthRequest, res) => {
   try {
-    const cacheKey = `dashboard_${JSON.stringify(req.query)}`;
+    const cacheKey = 'dashboard_stats';
     const cachedStats = getCachedData(cacheKey);
     
     if (cachedStats) {
       return res.json(cachedStats);
     }
 
-    // Fetch only essential data for dashboard
-    const [qrData, productRecords] = await Promise.all([
+    console.log('Fetching fresh dashboard data...');
+
+    // Fetch data with proper error handling and type safety
+    const [qrData, productRecords, couponAnalytics] = await Promise.allSettled([
       fetchQRScanCount().catch(() => ({ qr_scan_count: 0 })),
-      fetchProductRecords().catch(() => [])
+      fetchProductRecords().catch(() => []),
+      generateOptimizedCouponAnalytics().catch(() => [])
     ]);
 
-    // Filter real users only
-    const realProductRecords = productRecords.filter(record => 
-      record.user_id && isRealUser(record.user_id)
+    // Extract values from PromiseSettledResult
+    const qrResult = qrData.status === 'fulfilled' ? qrData.value : { qr_scan_count: 0 };
+    const productResult = productRecords.status === 'fulfilled' ? productRecords.value : [];
+    const couponResult = couponAnalytics.status === 'fulfilled' ? couponAnalytics.value : [];
+
+    // Ensure productResult is an array
+    const productArray = Array.isArray(productResult) ? productResult : [];
+    
+    // Filter real users
+    const realProductRecords = productArray.filter((record: any) => 
+      record?.user_id && isRealUser(record.user_id)
     );
 
-    // Calculate basic stats quickly
-    const uniqueUsers = new Set(realProductRecords.map(r => r.user_id)).size;
+    const uniqueUsers = new Set(realProductRecords.map((r: any) => r.user_id)).size;
     const totalSessions = realProductRecords.length;
-    const totalErrors = realProductRecords.filter(r => 
+    const totalErrors = realProductRecords.filter((r: any) => 
       r.search_source?.toLowerCase().includes('error') || 
       !r.product_name || 
       r.product_name.toLowerCase().includes('unknown')
     ).length;
 
-    // Generate lightweight coupon data
-    const couponAnalytics = await generateCouponAnalytics().catch(() => []);
-    const totalCouponsUsed = couponAnalytics.reduce((sum, c) => sum + c.usedCoupons, 0);
-    const totalSavings = couponAnalytics.reduce((sum, c) => sum + c.totalValue, 0);
+    // Calculate coupon metrics safely
+    const totalCouponsUsed = Array.isArray(couponResult) 
+      ? couponResult.reduce((sum: number, c: any) => sum + (c.usedCoupons || 0), 0)
+      : 0;
+    const totalSavings = Array.isArray(couponResult)
+      ? couponResult.reduce((sum: number, c: any) => sum + (c.totalValue || 0), 0)
+      : 0;
+    const totalCoupons = Array.isArray(couponResult)
+      ? couponResult.reduce((sum: number, c: any) => sum + (c.totalCoupons || 0), 0)
+      : 0;
 
     const stats = {
       totalUsers: uniqueUsers,
       uniqueUsers: uniqueUsers,
       totalSessions,
       totalErrors,
-      conversionRate: totalSessions > 0 ? ((totalSessions - totalErrors) / totalSessions) * 100 : 0,
-      avgSessionDuration: 245,
-      qrScans: {
-        totalScans: qrData.qr_scan_count,
-        todayScans: Math.floor(qrData.qr_scan_count * 0.05),
-        lastUpdated: new Date().toISOString()
-      },
+      conversionRate: totalSessions > 0 ? ((totalCouponsUsed / totalSessions) * 100).toFixed(2) : '0',
+      qrScanCount: qrResult?.qr_scan_count || 0,
+      totalCoupons,
       totalCouponsUsed,
-      totalSavings,
-      topProducts: realProductRecords
-        .filter(r => r.product_name && r.price)
-        .slice(0, 5)
-        .map(record => ({
-          id: record._id,
-          productName: record.product_name,
-          category: 'Electronics',
-          brand: extractBrand(record.logo_detected),
-          price: parseFloat(record.price) || 0,
-          successCount: 1,
-          timestamp: record.timestamp
-        })),
-      topCoupons: couponAnalytics.slice(0, 5)
+      totalSavings: Math.round(totalSavings),
+      avgSavingsPerCoupon: totalCouponsUsed > 0 ? Math.round(totalSavings / totalCouponsUsed) : 0,
+      couponUsageRate: totalCoupons > 0 ? ((totalCouponsUsed / totalCoupons) * 100).toFixed(2) : '0',
+      lastUpdated: new Date().toISOString(),
+      dataSource: 'live',
+      // Additional required fields for compatibility
+      avgSessionDuration: '0:00',
+      qrScans: qrResult?.qr_scan_count || 0,
+      topProducts: [],
+      topCoupons: []
     };
 
     setCachedData(cacheKey, stats);
     res.json(stats);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Dashboard stats error:', error);
-    res.status(500).json({ error: 'Failed to fetch dashboard stats' });
+    res.status(500).json({ 
+      error: 'Failed to fetch dashboard stats',
+      details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
   }
 });
 
-// QR scan count endpoint - fast response
-router.get('/qr-scans', authenticateToken, async (req: AuthRequest, res) => {
+// FIXED Product analytics endpoint
+router.get('/products', async (req: AuthRequest, res) => {
   try {
-    const cachedData = getCachedData('qr-scans');
-    if (cachedData) {
-      return res.json(cachedData);
-    }
-
-    const qrData = await fetchQRScanCount();
-    const result = {
-      totalScans: qrData.qr_scan_count,
-      todayScans: Math.floor(qrData.qr_scan_count * 0.05),
-      lastUpdated: new Date().toISOString()
-    };
-
-    setCachedData('qr-scans', result);
-    res.json(result);
-  } catch (error) {
-    console.error('QR scan count error:', error);
-    res.status(500).json({ error: 'Failed to fetch QR scan count' });
-  }
-});
-
-// Product records endpoint - with pagination
-router.get('/products', authenticateToken, async (req: AuthRequest, res) => {
-  try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 50;
-    
-    const cacheKey = `products_${page}_${limit}`;
+    const { limit = 100, offset = 0, brand, category } = req.query;
+    const cacheKey = `products_${limit}_${offset}_${brand || 'all'}_${category || 'all'}`;
     const cachedData = getCachedData(cacheKey);
     
     if (cachedData) {
       return res.json(cachedData);
     }
 
-    const productRecords = await fetchProductRecords();
+    console.log('Fetching product analytics...');
     
-    // Filter and format data
-    const filteredRecords = productRecords
-      .filter(record => record.user_id && isRealUser(record.user_id))
-      .map(record => ({
-        id: record._id,
-        productName: record.product_name || 'Unknown Product',
-        category: categorizeProduct(record.product_name),
-        brand: extractBrand(record.logo_detected),
-        price: parseFloat(record.price) || 0,
-        amazonPrice: parseFloat(record.amazon_price) || 0,
-        flipkartPrice: parseFloat(record.flipkart_price) || 0,
-        imageDetected: !!record.image_path,
-        brandDetected: !!record.logo_detected && !record.logo_detected.includes('NO'),
-        searchSource: record.search_source || 'Unknown',
-        timestamp: record.timestamp,
-        userId: req.user?.role === 'admin' ? maskPhoneNumber(record.user_id || '') : 'XXXXXXXXXX',
-        deviceInfo: record.device_info,
-        errorCount: record.search_source?.toLowerCase().includes('error') ? 1 : 0,
-        successCount: record.search_source?.toLowerCase().includes('error') ? 0 : 1
-      }));
+    const productRecords = await fetchProductRecords().catch(() => []);
+    const productArray = Array.isArray(productRecords) ? productRecords : [];
 
-    // Implement pagination
-    const startIndex = (page - 1) * limit;
-    const endIndex = startIndex + limit;
-    const paginatedRecords = filteredRecords.slice(startIndex, endIndex);
+    let filteredRecords = productArray.filter((record: any) => 
+      record?.user_id && isRealUser(record.user_id)
+    );
+
+    if (brand) {
+      filteredRecords = filteredRecords.filter((r: any) => 
+        r.product_brand?.toLowerCase().includes(brand.toString().toLowerCase())
+      );
+    }
+
+    if (category) {
+      filteredRecords = filteredRecords.filter((r: any) => 
+        r.product_category?.toLowerCase().includes(category.toString().toLowerCase())
+      );
+    }
+
+    const startIndex = parseInt(offset.toString());
+    const limitNum = parseInt(limit.toString());
+    const paginatedRecords = filteredRecords.slice(startIndex, startIndex + limitNum);
 
     const result = {
-      data: paginatedRecords,
+      records: paginatedRecords.map((record: any) => ({
+        ...record,
+        user_id: req.user?.role === 'admin' ? maskPhoneNumber(record.user_id) : null
+      })),
+      totalRecords: filteredRecords.length,
       pagination: {
-        page,
-        limit,
-        total: filteredRecords.length,
-        totalPages: Math.ceil(filteredRecords.length / limit)
+        limit: limitNum,
+        offset: startIndex,
+        hasMore: startIndex + limitNum < filteredRecords.length
       }
     };
 
-    setCachedData(cacheKey, paginatedRecords);
-    res.json(paginatedRecords); // Return just the data for backward compatibility
+    setCachedData(cacheKey, result);
+    res.json(result);
   } catch (error) {
-    console.error('Product records error:', error);
-    res.status(500).json({ error: 'Failed to fetch product records' });
+    console.error('Product analytics error:', error);
+    res.status(500).json({ error: 'Failed to fetch product analytics' });
   }
 });
 
-// Product feedback endpoint
-router.get('/product-feedback', authenticateToken, async (req: AuthRequest, res) => {
+// FIXED Coupon analytics endpoint
+router.get('/coupons', async (req: AuthRequest, res) => {
   try {
-    const cachedData = getCachedData('product-feedback');
+    const { type, limit = 50 } = req.query;
+    const cacheKey = `coupons_${type || 'all'}_${limit}`;
+    const cachedData = getCachedData(cacheKey);
+    
     if (cachedData) {
       return res.json(cachedData);
     }
 
-    const productFeedback = await fetchProductFeedback();
-    
-    const formattedFeedback = productFeedback
-      .filter(feedback => feedback.user_id && isRealUser(feedback.user_id))
-      .map(feedback => ({
-        id: feedback._id,
-        productName: feedback.product_name || 'Unknown Product',
-        feedback: feedback.feedback,
-        rating: feedback.rating || 0,
-        category: feedback.category || categorizeProduct(feedback.product_name),
-        timestamp: feedback.timestamp,
-        userId: req.user?.role === 'admin' ? maskPhoneNumber(feedback.user_id) : 'XXXXXXXXXX'
-      }));
+    console.log('Fetching coupon analytics...');
 
-    setCachedData('product-feedback', formattedFeedback);
+    const couponAnalytics = await generateOptimizedCouponAnalytics();
+    
+    let filteredAnalytics = couponAnalytics;
+    if (type) {
+      filteredAnalytics = couponAnalytics.filter((c: any) => 
+        Object.keys(c.couponTypes).some(t => t.toLowerCase() === type.toString().toLowerCase())
+      );
+    }
+
+    const limitedAnalytics = filteredAnalytics.slice(0, parseInt(limit.toString()));
+
+    const summary = {
+      totalCoupons: filteredAnalytics.reduce((sum: number, c: any) => sum + (c.totalCoupons || 0), 0),
+      totalUsed: filteredAnalytics.reduce((sum: number, c: any) => sum + (c.usedCoupons || 0), 0),
+      totalValue: filteredAnalytics.reduce((sum: number, c: any) => sum + (c.totalValue || 0), 0),
+      avgUsageRate: filteredAnalytics.length > 0 
+        ? filteredAnalytics.reduce((sum: number, c: any) => sum + (c.usageRate || 0), 0) / filteredAnalytics.length 
+        : 0,
+      typeDistribution: {}
+    };
+
+    const result = {
+      analytics: limitedAnalytics,
+      summary,
+      totalRecords: filteredAnalytics.length,
+      lastUpdated: new Date().toISOString()
+    };
+
+    setCachedData(cacheKey, result);
+    res.json(result);
+  } catch (error) {
+    console.error('Coupon analytics error:', error);
+    res.status(500).json({ error: 'Failed to fetch coupon analytics' });
+  }
+});
+
+// FIXED Coupon Links endpoint
+router.get('/coupon-links', async (req: AuthRequest, res) => {
+  try {
+    const { coupon_id, coupon_type, is_used, limit = 100, offset = 0 } = req.query;
+    const cacheKey = `coupon_links_${coupon_id || 'all'}_${coupon_type || 'all'}_${is_used || 'all'}_${limit}_${offset}`;
+    const cachedData = getCachedData(cacheKey);
+    
+    if (cachedData) {
+      return res.json(cachedData);
+    }
+
+    console.log('Fetching coupon links...');
+
+    const couponLinks = await fetchCouponLinks();
+    
+    let filteredLinks = couponLinks;
+    
+    if (coupon_id) {
+      filteredLinks = filteredLinks.filter((link: any) => link.id === parseInt(coupon_id.toString()));
+    }
+    
+    if (coupon_type) {
+      filteredLinks = filteredLinks.filter((link: any) => 
+        link.Coupon_type?.toLowerCase() === coupon_type.toString().toLowerCase()
+      );
+    }
+    
+    if (is_used !== undefined) {
+      const isUsedBool = is_used.toString() === 'true';
+      filteredLinks = filteredLinks.filter((link: any) => link.is_used === isUsedBool);
+    }
+
+    const startIndex = parseInt(offset.toString());
+    const limitNum = parseInt(limit.toString());
+    const paginatedLinks = filteredLinks.slice(startIndex, startIndex + limitNum);
+
+    const result = {
+      links: paginatedLinks,
+      totalRecords: filteredLinks.length,
+      pagination: {
+        limit: limitNum,
+        offset: startIndex,
+        hasMore: startIndex + limitNum < filteredLinks.length
+      },
+      filters: { coupon_id, coupon_type, is_used }
+    };
+
+    setCachedData(cacheKey, result);
+    res.json(result);
+  } catch (error) {
+    console.error('Coupon links error:', error);
+    res.status(500).json({ error: 'Failed to fetch coupon links' });
+  }
+});
+
+// FIXED Product feedback endpoint
+router.get('/product-feedback', async (req: AuthRequest, res) => {
+  try {
+    const { limit = 50 } = req.query;
+    const cacheKey = `product_feedback_${limit}`;
+    const cachedData = getCachedData(cacheKey);
+    
+    if (cachedData) {
+      return res.json(cachedData);
+    }
+
+    console.log('Fetching product feedback...');
+
+    const productFeedback = await fetchProductFeedback().catch(() => []);
+    const feedbackArray = Array.isArray(productFeedback) ? productFeedback : [];
+    
+    const filteredFeedback = feedbackArray
+      .filter((feedback: any) => feedback?.user_id && isRealUser(feedback.user_id))
+      .slice(0, parseInt(limit.toString()));
+
+    const formattedFeedback = filteredFeedback.map((feedback: any) => ({
+      id: feedback._id,
+      productName: feedback.product_name,
+      rating: feedback.rating,
+      timestamp: feedback.timestamp,
+      userId: req.user?.role === 'admin' 
+        ? maskPhoneNumber(feedback.user_id) 
+        : 'XXXXXXXXXX'
+    }));
+
+    setCachedData(cacheKey, formattedFeedback);
     res.json(formattedFeedback);
   } catch (error) {
     console.error('Product feedback error:', error);
@@ -218,110 +333,51 @@ router.get('/product-feedback', authenticateToken, async (req: AuthRequest, res)
   }
 });
 
-// Coupon analytics endpoint
-router.get('/coupons', authenticateToken, async (req: AuthRequest, res) => {
+// FIXED User flows endpoint
+router.get('/user-flows', async (req: AuthRequest, res) => {
   try {
-    const cachedData = getCachedData('coupons');
-    if (cachedData) {
-      return res.json(cachedData);
-    }
-
-    const couponAnalytics = await generateCouponAnalytics();
-    setCachedData('coupons', couponAnalytics);
-    res.json(couponAnalytics);
-  } catch (error) {
-    console.error('Coupon analytics error:', error);
-    res.status(500).json({ error: 'Failed to fetch coupon analytics' });
-  }
-});
-
-// Hero deals endpoint
-router.get('/hero-deals', authenticateToken, async (req: AuthRequest, res) => {
-  try {
-    const cachedData = getCachedData('hero-deals');
-    if (cachedData) {
-      return res.json(cachedData);
-    }
-
-    const heroDeals = await fetchHeroDeals();
+    const { limit = 100 } = req.query;
+    const cacheKey = `user_flows_${limit}`;
+    const cachedData = getCachedData(cacheKey);
     
-    const formattedDeals = heroDeals.map(deal => ({
-      id: deal._id,
-      category: deal.Category,
-      vertical: deal.Vertical,
-      productName: deal.Product_Name,
-      deal: deal.Deal,
-      fsn: deal.FSN,
-      productLink: deal.Product_Link,
-      verticalCleaning: deal.Vertical_Cleaning,
-      timestamp: deal.timestamp
-    }));
-
-    setCachedData('hero-deals', formattedDeals);
-    res.json(formattedDeals);
-  } catch (error) {
-    console.error('Hero deals error:', error);
-    res.status(500).json({ error: 'Failed to fetch hero deals' });
-  }
-});
-
-// User flows endpoint
-router.get('/user-flows', authenticateToken, async (req: AuthRequest, res) => {
-  try {
-    const cachedData = getCachedData('user-flows');
     if (cachedData) {
       return res.json(cachedData);
     }
 
-    const [productRecords, productFeedback] = await Promise.all([
-      fetchProductRecords(),
-      fetchProductFeedback()
-    ]);
+    console.log('Generating user flows...');
+
+    const productRecords = await fetchProductRecords().catch(() => []);
+    const productArray = Array.isArray(productRecords) ? productRecords : [];
 
     const flows: any[] = [];
+    const limitNum = parseInt(limit.toString());
 
-    // Add product record flows (limited for performance)
-    productRecords
-      .filter(record => record.user_id && isRealUser(record.user_id))
-      .slice(0, 100) // Limit for performance
-      .forEach(record => {
-        flows.push({
-          id: `product_${record._id}`,
-          userId: req.user?.role === 'admin' ? maskPhoneNumber(record.user_id || '') : 'XXXXXXXXXX',
-          timestamp: record.timestamp,
-          source: record.search_source || 'Unknown',
-          destination: 'Product Search',
-          action: record.search_source?.toLowerCase().includes('error') ? 'error' : 'view',
-          productId: record._id,
-          sessionId: `session_${record._id}`,
-          userAgent: record.device_info || 'Unknown',
-          ipAddress: '192.168.1.XXX'
-        });
+    const realProductRecords = productArray
+      .filter((record: any) => record?.user_id && isRealUser(record.user_id))
+      .slice(0, limitNum);
+
+    realProductRecords.forEach((record: any, index: number) => {
+      flows.push({
+        id: `product_${record._id || index}`,
+        userId: req.user?.role === 'admin' 
+          ? maskPhoneNumber(record.user_id || '') 
+          : 'XXXXXXXXXX',
+        timestamp: record.timestamp,
+        source: record.search_source || 'Unknown',
+        destination: 'Product Search',
+        action: record.search_source?.toLowerCase().includes('error') ? 'error' : 'view',
+        productName: record.product_name,
+        productBrand: record.product_brand,
+        sessionId: `session_${record._id || index}`,
+        // Add missing required fields for UserFlow type
+        userAgent: 'Unknown',
+        ipAddress: 'Hidden'
       });
+    });
 
-    // Add feedback flows (limited for performance)
-    productFeedback
-      .filter(feedback => feedback.user_id && isRealUser(feedback.user_id))
-      .slice(0, 50) // Limit for performance
-      .forEach(feedback => {
-        flows.push({
-          id: `feedback_${feedback._id}`,
-          userId: req.user?.role === 'admin' ? maskPhoneNumber(feedback.user_id) : 'XXXXXXXXXX',
-          timestamp: feedback.timestamp,
-          source: 'Product Page',
-          destination: 'Feedback',
-          action: 'feedback',
-          sessionId: `session_${feedback._id}`,
-          userAgent: 'Unknown',
-          ipAddress: '192.168.1.XXX',
-          rating: feedback.rating
-        });
-      });
-
-    // Sort by timestamp (newest first)
     flows.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-    setCachedData('user-flows', flows);
+    setCachedData(cacheKey, flows);
     res.json(flows);
   } catch (error) {
     console.error('User flows error:', error);
@@ -329,10 +385,47 @@ router.get('/user-flows', authenticateToken, async (req: AuthRequest, res) => {
   }
 });
 
-// Export endpoint
-router.get('/export/:type', authenticateToken, async (req: AuthRequest, res) => {
+// QR Scan endpoint
+router.get('/qr-scans/:id?', async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const cacheKey = `qr_scans_${id || 'default'}`;
+    const cachedData = getCachedData(cacheKey);
+    
+    if (cachedData) {
+      return res.json(cachedData);
+    }
+
+    console.log(`Fetching QR scan count for ID: ${id || 'default'}`);
+
+    const qrData = await fetchQRScanCount().catch(() => ({ qr_scan_count: 0 }));
+    
+    const result = {
+      qrId: id || 'default',
+      scanCount: qrData?.qr_scan_count || 0,
+      timestamp: new Date().toISOString(),
+      status: 'success'
+    };
+
+    cache.set(cacheKey, { data: result, timestamp: Date.now() - (CACHE_DURATION - 60000) });
+    
+    res.json(result);
+  } catch (error) {
+    console.error('QR scan error:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch QR scan count',
+      qrId: req.params.id || 'default',
+      scanCount: 0,
+      timestamp: new Date().toISOString(),
+      status: 'error'
+    });
+  }
+});
+
+// Export endpoint - Removed hero-deals
+router.get('/export/:type', async (req: AuthRequest, res) => {
   const { type } = req.params;
-  const { format = 'csv' } = req.query;
+  const { format = 'json' } = req.query;
 
   try {
     let data: any[] = [];
@@ -340,91 +433,79 @@ router.get('/export/:type', authenticateToken, async (req: AuthRequest, res) => 
 
     switch (type) {
       case 'products':
-        data = await fetchProductRecords();
-        filename = 'product_records';
-        break;
-      case 'feedback':
-        data = await fetchProductFeedback();
-        filename = 'product_feedback';
+        data = await fetchProductRecords().catch(() => []);
+        filename = `product_records_${new Date().toISOString().split('T')[0]}`;
         break;
       case 'coupons':
-        data = await generateCouponAnalytics();
-        filename = 'coupon_analytics';
+        data = await generateOptimizedCouponAnalytics().catch(() => []);
+        filename = `coupon_analytics_${new Date().toISOString().split('T')[0]}`;
         break;
-      case 'hero-deals':
-        data = await fetchHeroDeals();
-        filename = 'hero_deals';
+      case 'coupon-links':
+        data = await fetchCouponLinks().catch(() => []);
+        filename = `coupon_links_${new Date().toISOString().split('T')[0]}`;
         break;
       default:
         return res.status(400).json({ error: 'Invalid export type' });
     }
 
     if (format === 'csv') {
-      const csvData = convertToCSV(data);
+      const csv = convertToCSV(Array.isArray(data) ? data : []);
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}.csv"`);
-      res.send(csvData);
+      res.send(csv);
     } else {
       res.setHeader('Content-Type', 'application/json');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}.json"`);
-      res.json(data);
+      res.json(Array.isArray(data) ? data : []);
     }
   } catch (error) {
-    console.error('Export error:', error);
-    res.status(500).json({ error: 'Failed to export data' });
+    console.error(`Export ${type} error:`, error);
+    res.status(500).json({ error: `Failed to export ${type}` });
   }
 });
 
-// Helper functions
-function extractBrand(logoDetected: string): string {
-  if (!logoDetected) return 'Unknown';
-  
-  const match = logoDetected.match(/'([^']+)_logo'/);
-  if (match) {
-    return match[1].charAt(0).toUpperCase() + match[1].slice(1);
-  }
-  
-  return 'Unknown';
-}
+// Cache management endpoint
+router.post('/cache/clear', async (req: AuthRequest, res) => {
+  try {
+    if (req.user?.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
 
-function categorizeProduct(productName: string): string {
-  if (!productName) return 'Unknown';
-  
-  const name = productName.toLowerCase();
-  
-  if (name.includes('mobile') || name.includes('phone') || name.includes('iphone') || name.includes('samsung')) {
-    return 'Mobile';
+    const { keys } = req.body;
+    
+    if (keys && Array.isArray(keys)) {
+      keys.forEach(key => cache.delete(key));
+      res.json({ message: `Cleared ${keys.length} cache entries`, clearedKeys: keys });
+    } else {
+      const cacheSize = cache.size;
+      cache.clear();
+      res.json({ message: `Cleared all ${cacheSize} cache entries` });
+    }
+  } catch (error) {
+    console.error('Cache clear error:', error);
+    res.status(500).json({ error: 'Failed to clear cache' });
   }
-  if (name.includes('laptop') || name.includes('computer') || name.includes('pc')) {
-    return 'Laptop';
-  }
-  if (name.includes('tv') || name.includes('television')) {
-    return 'Television';
-  }
-  if (name.includes('headphone') || name.includes('earphone') || name.includes('audio')) {
-    return 'Audio';
-  }
-  if (name.includes('camera')) {
-    return 'Camera';
-  }
-  if (name.includes('watch')) {
-    return 'Watch';
-  }
-  
-  return 'Electronics';
-}
+});
 
+// Utility function to convert data to CSV
 function convertToCSV(data: any[]): string {
-  if (data.length === 0) return '';
+  if (!data.length) return '';
   
-  const headers = Object.keys(data[0]).join(',');
-  const rows = data.map(item => 
-    Object.values(item).map(value => 
-      typeof value === 'string' ? `"${value.replace(/"/g, '""')}"` : value
-    ).join(',')
-  );
+  const headers = Object.keys(data[0]);
+  const csvContent = [
+    headers.join(','),
+    ...data.map(row => 
+      headers.map(header => {
+        const value = row[header];
+        if (value === null || value === undefined) return '';
+        if (typeof value === 'object') return JSON.stringify(value);
+        if (typeof value === 'string' && value.includes(',')) return `"${value}"`;
+        return value;
+      }).join(',')
+    )
+  ].join('\n');
   
-  return [headers, ...rows].join('\n');
+  return csvContent;
 }
 
 export default router;

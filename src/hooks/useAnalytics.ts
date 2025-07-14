@@ -1,381 +1,233 @@
-import { useState, useEffect, useCallback } from 'react';
-import { DashboardStats, FilterOptions, UserFlow, ProductAnalytics, CouponAnalytics, ProductFeedback, HeroDeal } from '../types';
-import { 
-  fetchQRScanCount, 
-  fetchProductRecords, 
-  fetchProductFeedback,
-  maskPhoneNumber,
-  isRealUser,
-  extractBrand,
-  categorizeProduct
-} from '../services/externalApi';
-import { generateCouponAnalytics, generateHeroDeals } from '../services/couponService';
+// src/hooks/useAnalytics.ts - Fixed Version
+import { useState, useEffect } from 'react';
+import { FilterOptions, DashboardStats, UserFlow, ProductAnalytics, CouponAnalytics, ProductFeedback } from '../types';
 
-interface AnalyticsState {
+interface LoadingStates {
+  dashboard: boolean;
+  userFlows: boolean;
+  productAnalytics: boolean;
+  couponAnalytics: boolean;
+  productFeedback: boolean;
+}
+
+interface UseAnalyticsReturn {
   stats: DashboardStats | null;
   userFlows: UserFlow[];
   productAnalytics: ProductAnalytics[];
-  productFeedback: ProductFeedback[];
   couponAnalytics: CouponAnalytics[];
-  heroDeals: HeroDeal[];
-  loading: {
-    stats: boolean;
-    userFlows: boolean;
-    productAnalytics: boolean;
-    productFeedback: boolean;
-    couponAnalytics: boolean;
-    heroDeals: boolean;
-  };
+  productFeedback: ProductFeedback[];
+  loadingStates: LoadingStates;
+  isStatsLoaded: boolean;
   error: string | null;
+  exportData: (type: string, format?: string) => Promise<void>;
+  refreshData: () => Promise<void>;
 }
 
-export const useAnalytics = (filters: FilterOptions) => {
-  const [state, setState] = useState<AnalyticsState>({
-    stats: null,
-    userFlows: [],
-    productAnalytics: [],
-    productFeedback: [],
-    couponAnalytics: [],
-    heroDeals: [],
-    loading: {
-      stats: true,
-      userFlows: true,
-      productAnalytics: true,
-      productFeedback: true,
-      couponAnalytics: true,
-      heroDeals: true,
-    },
-    error: null,
+export const useAnalytics = (filters: FilterOptions): UseAnalyticsReturn => {
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [userFlows, setUserFlows] = useState<UserFlow[]>([]);
+  const [productAnalytics, setProductAnalytics] = useState<ProductAnalytics[]>([]);
+  const [couponAnalytics, setCouponAnalytics] = useState<CouponAnalytics[]>([]);
+  const [productFeedback, setProductFeedback] = useState<ProductFeedback[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [isStatsLoaded, setIsStatsLoaded] = useState(false);
+  
+  const [loadingStates, setLoadingStates] = useState<LoadingStates>({
+    dashboard: false,
+    userFlows: false,
+    productAnalytics: false,
+    couponAnalytics: false,
+    productFeedback: false,
   });
 
-  const updateLoading = (key: keyof AnalyticsState['loading'], value: boolean) => {
-    setState(prev => ({
-      ...prev,
-      loading: { ...prev.loading, [key]: value }
-    }));
+  const updateLoadingState = (key: keyof LoadingStates, loading: boolean) => {
+    setLoadingStates(prev => ({ ...prev, [key]: loading }));
   };
 
-  const updateData = (key: keyof Omit<AnalyticsState, 'loading' | 'error'>, data: any) => {
-    setState(prev => ({
-      ...prev,
-      [key]: data
-    }));
-  };
-
-  const setError = (error: string | null) => {
-    setState(prev => ({ ...prev, error }));
-  };
-
-  // Fetch dashboard stats with real data
-  const fetchStats = useCallback(async () => {
+  const fetchWithErrorHandling = async <T>(
+    url: string,
+    loadingKey: keyof LoadingStates,
+    fallbackValue: T
+  ): Promise<T> => {
+    updateLoadingState(loadingKey, true);
     try {
-      updateLoading('stats', true);
-      setError(null);
-
-      // Fetch data in parallel for faster loading
-      const [qrData, productRecords, productFeedback] = await Promise.all([
-        fetchQRScanCount().catch(() => ({ qr_scan_count: 1247 })),
-        fetchProductRecords().catch(() => []),
-        fetchProductFeedback().catch(() => [])
-      ]);
-
-      // Filter real users only
-      const realProductRecords = productRecords.filter(record => 
-        record.user_id && isRealUser(record.user_id)
-      );
-
-      const realFeedback = productFeedback.filter(feedback => 
-        feedback.user_id && isRealUser(feedback.user_id)
-      );
-
-      // Calculate stats
-      const uniqueUsers = new Set(realProductRecords.map(r => r.user_id)).size;
-      const totalSessions = realProductRecords.length;
-      const totalErrors = realProductRecords.filter(r => 
-        r.search_source?.toLowerCase().includes('error') || 
-        !r.product_name || 
-        r.product_name.toLowerCase().includes('unknown')
-      ).length;
-
-      // Generate coupon data
-      const couponAnalytics = generateCouponAnalytics();
-      const totalCouponsUsed = couponAnalytics.reduce((sum, c) => sum + c.usedCoupons, 0);
-      const totalSavings = couponAnalytics.reduce((sum, c) => sum + c.totalValue, 0);
-
-      const stats: DashboardStats = {
-        totalUsers: uniqueUsers,
-        uniqueUsers: uniqueUsers,
-        totalSessions,
-        totalErrors,
-        conversionRate: totalSessions > 0 ? ((totalSessions - totalErrors) / totalSessions) * 100 : 0,
-        avgSessionDuration: 245,
-        qrScans: {
-          totalScans: qrData.qr_scan_count,
-          todayScans: Math.floor(qrData.qr_scan_count * 0.05),
-          lastUpdated: new Date().toISOString()
+      const token = localStorage.getItem('token');
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
-        totalCouponsUsed,
-        totalSavings,
-        topProducts: realProductRecords
-          .filter(r => r.product_name && r.price)
-          .slice(0, 5)
-          .map(record => ({
-            id: record._id,
-            productName: record.product_name,
-            category: categorizeProduct(record.product_name),
-            brand: extractBrand(record.logo_detected),
-            price: parseFloat(record.price) || 0,
-            successCount: 1,
-            timestamp: new Date(record.timestamp)
-          })),
-        topCoupons: couponAnalytics.slice(0, 5)
-      };
+      });
 
-      updateData('stats', stats);
-    } catch (err) {
-      console.error('Stats fetch error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch stats');
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return data as T;
+    } catch (error: any) {
+      console.error(`Error fetching ${loadingKey}:`, error);
+      setError(error.message || `Failed to fetch ${loadingKey}`);
+      return fallbackValue;
     } finally {
-      updateLoading('stats', false);
+      updateLoadingState(loadingKey, false);
     }
-  }, [filters]);
+  };
 
-  // Fetch product analytics
-  const fetchProductAnalytics = useCallback(async () => {
+  const fetchDashboardStats = async () => {
     try {
-      updateLoading('productAnalytics', true);
-      
-      const productRecords = await fetchProductRecords();
-      const filteredRecords = productRecords
-        .filter(record => record.user_id && isRealUser(record.user_id))
-        .map(record => ({
-          id: record._id,
-          productName: record.product_name || 'Unknown Product',
-          category: categorizeProduct(record.product_name),
-          brand: extractBrand(record.logo_detected),
-          price: parseFloat(record.price) || 0,
-          amazonPrice: parseFloat(record.amazon_price) || 0,
-          flipkartPrice: parseFloat(record.flipkart_price) || 0,
-          imageDetected: !!record.image_path,
-          brandDetected: !!record.logo_detected && !record.logo_detected.includes('NO'),
-          searchSource: record.search_source || 'Unknown',
-          timestamp: new Date(record.timestamp),
-          userId: maskPhoneNumber(record.user_id || ''),
-          deviceInfo: record.device_info,
-          errorCount: record.search_source?.toLowerCase().includes('error') ? 1 : 0,
-          successCount: record.search_source?.toLowerCase().includes('error') ? 0 : 1
-        }));
-
-      updateData('productAnalytics', filteredRecords);
-    } catch (err) {
-      console.error('Product analytics fetch error:', err);
-    } finally {
-      updateLoading('productAnalytics', false);
+      const data = await fetchWithErrorHandling<DashboardStats>(
+        '/api/analytics/dashboard',
+        'dashboard',
+        {
+          totalUsers: 0,
+          uniqueUsers: 0,
+          totalSessions: 0,
+          totalErrors: 0,
+          conversionRate: '0',
+          qrScanCount: 0,
+          totalCoupons: 0,
+          totalCouponsUsed: 0,
+          totalSavings: 0,
+          avgSavingsPerCoupon: 0,
+          couponUsageRate: '0',
+          lastUpdated: new Date().toISOString(),
+          dataSource: 'cache',
+          avgSessionDuration: "0:00",
+          qrScans: 0,
+          topProducts: [],
+          topCoupons: []
+        }
+      );
+      setStats(data);
+      setIsStatsLoaded(true);
+    } catch (error: any) {
+      console.error('Dashboard stats error:', error);
+      setError(error.message);
     }
-  }, [filters]);
+  };
 
-  // Fetch product feedback
-  const fetchProductFeedbackData = useCallback(async () => {
+  const fetchUserFlows = async () => {
     try {
-      updateLoading('productFeedback', true);
-      
-      const feedbackData = await fetchProductFeedback();
-      const formattedFeedback = feedbackData
-        .filter(feedback => feedback.user_id && isRealUser(feedback.user_id))
-        .map(feedback => ({
-          id: feedback._id,
-          productName: feedback.product_name || 'Unknown Product',
-          feedback: feedback.feedback,
-          rating: feedback.rating || 0,
-          category: feedback.category || categorizeProduct(feedback.product_name),
-          timestamp: new Date(feedback.timestamp),
-          userId: maskPhoneNumber(feedback.user_id)
-        }));
-
-      updateData('productFeedback', formattedFeedback);
-    } catch (err) {
-      console.error('Product feedback fetch error:', err);
-    } finally {
-      updateLoading('productFeedback', false);
+      const data = await fetchWithErrorHandling<UserFlow[]>(
+        '/api/analytics/user-flows?limit=100',
+        'userFlows',
+        []
+      );
+      setUserFlows(Array.isArray(data) ? data : []);
+    } catch (error: any) {
+      console.error('User flows error:', error);
+      setUserFlows([]);
     }
-  }, [filters]);
+  };
 
-  // Generate user flows from real data
-  const generateUserFlows = useCallback(async () => {
+  const fetchProductAnalytics = async () => {
     try {
-      updateLoading('userFlows', true);
-      
-      const [productRecords, feedbackData] = await Promise.all([
-        fetchProductRecords(),
-        fetchProductFeedback()
-      ]);
-
-      const flows: UserFlow[] = [];
-
-      // Add product record flows
-      productRecords
-        .filter(record => record.user_id && isRealUser(record.user_id))
-        .slice(0, 100)
-        .forEach(record => {
-          flows.push({
-            id: `product_${record._id}`,
-            userId: maskPhoneNumber(record.user_id || ''),
-            timestamp: new Date(record.timestamp),
-            source: record.search_source || 'Unknown',
-            destination: 'Product Search',
-            action: record.search_source?.toLowerCase().includes('error') ? 'error' : 'view',
-            productId: record._id,
-            sessionId: `session_${record._id}`,
-            userAgent: record.device_info || 'Unknown',
-            ipAddress: '192.168.1.XXX'
-          });
-        });
-
-      // Add feedback flows
-      feedbackData
-        .filter(feedback => feedback.user_id && isRealUser(feedback.user_id))
-        .slice(0, 50)
-        .forEach(feedback => {
-          flows.push({
-            id: `feedback_${feedback._id}`,
-            userId: maskPhoneNumber(feedback.user_id),
-            timestamp: new Date(feedback.timestamp),
-            source: 'Product Page',
-            destination: 'Feedback',
-            action: 'feedback',
-            sessionId: `session_${feedback._id}`,
-            userAgent: 'Unknown',
-            ipAddress: '192.168.1.XXX',
-            rating: feedback.rating
-          });
-        });
-
-      flows.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      updateData('userFlows', flows);
-    } catch (err) {
-      console.error('User flows generation error:', err);
-    } finally {
-      updateLoading('userFlows', false);
+      const data = await fetchWithErrorHandling<{ records: ProductAnalytics[] }>(
+        '/api/analytics/products?limit=100',
+        'productAnalytics',
+        { records: [] }
+      );
+      setProductAnalytics(data.records || []);
+    } catch (error: any) {
+      console.error('Product analytics error:', error);
+      setProductAnalytics([]);
     }
-  }, [filters]);
+  };
 
-  // Generate coupon analytics
-  const fetchCouponAnalytics = useCallback(async () => {
+  const fetchCouponAnalytics = async () => {
     try {
-      updateLoading('couponAnalytics', true);
-      const analytics = generateCouponAnalytics();
-      updateData('couponAnalytics', analytics);
-    } catch (err) {
-      console.error('Coupon analytics error:', err);
-    } finally {
-      updateLoading('couponAnalytics', false);
+      const data = await fetchWithErrorHandling<{ analytics: CouponAnalytics[] }>(
+        '/api/analytics/coupons?limit=50',
+        'couponAnalytics',
+        { analytics: [] }
+      );
+      setCouponAnalytics(data.analytics || []);
+    } catch (error: any) {
+      console.error('Coupon analytics error:', error);
+      setCouponAnalytics([]);
     }
-  }, [filters]);
+  };
 
-  // Generate hero deals
-  const fetchHeroDeals = useCallback(async () => {
+  const fetchProductFeedback = async () => {
     try {
-      updateLoading('heroDeals', true);
-      const deals = generateHeroDeals();
-      updateData('heroDeals', deals);
-    } catch (err) {
-      console.error('Hero deals error:', err);
-    } finally {
-      updateLoading('heroDeals', false);
+      const data = await fetchWithErrorHandling<ProductFeedback[]>(
+        '/api/analytics/product-feedback?limit=50',
+        'productFeedback',
+        []
+      );
+      setProductFeedback(Array.isArray(data) ? data : []);
+    } catch (error: any) {
+      console.error('Product feedback error:', error);
+      setProductFeedback([]);
     }
-  }, [filters]);
+  };
 
-  // Fetch all data with progressive loading
-  const fetchAllData = useCallback(async () => {
+  const exportData = async (type: string, format: string = 'json') => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/analytics/export/${type}?format=${format}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Export failed: ${response.statusText}`);
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = `${type}_export_${new Date().toISOString().split('T')[0]}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error: any) {
+      console.error('Export error:', error);
+      setError(`Export failed: ${error.message}`);
+    }
+  };
+
+  const refreshData = async () => {
     setError(null);
-    
-    // Start with stats immediately
-    fetchStats();
-    
-    // Then load other data progressively
-    setTimeout(() => fetchProductAnalytics(), 100);
-    setTimeout(() => fetchProductFeedbackData(), 200);
-    setTimeout(() => generateUserFlows(), 300);
-    setTimeout(() => fetchCouponAnalytics(), 400);
-    setTimeout(() => fetchHeroDeals(), 500);
-  }, [fetchStats, fetchProductAnalytics, fetchProductFeedbackData, generateUserFlows, fetchCouponAnalytics, fetchHeroDeals]);
+    await Promise.all([
+      fetchDashboardStats(),
+      fetchUserFlows(),
+      fetchProductAnalytics(),
+      fetchCouponAnalytics(),
+      fetchProductFeedback(),
+    ]);
+  };
 
   useEffect(() => {
-    fetchAllData();
-  }, [fetchAllData]);
+    refreshData();
+  }, [filters]);
 
-  const exportData = async (type: 'flows' | 'products' | 'feedback' | 'coupons' | 'hero-deals', format: 'csv' | 'json' = 'csv') => {
-    try {
-      let data: any[] = [];
-      let filename = '';
-
-      switch (type) {
-        case 'products':
-          data = state.productAnalytics;
-          filename = 'product_analytics';
-          break;
-        case 'feedback':
-          data = state.productFeedback;
-          filename = 'product_feedback';
-          break;
-        case 'coupons':
-          data = state.couponAnalytics;
-          filename = 'coupon_analytics';
-          break;
-        case 'hero-deals':
-          data = state.heroDeals;
-          filename = 'hero_deals';
-          break;
-        case 'flows':
-          data = state.userFlows;
-          filename = 'user_flows';
-          break;
+  // Auto-refresh every 5 minutes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!Object.values(loadingStates).some(loading => loading)) {
+        refreshData();
       }
+    }, 5 * 60 * 1000);
 
-      if (format === 'csv') {
-        const csvData = convertToCSV(data);
-        downloadFile(csvData, `${filename}.csv`, 'text/csv');
-      } else {
-        const jsonData = JSON.stringify(data, null, 2);
-        downloadFile(jsonData, `${filename}.json`, 'application/json');
-      }
-    } catch (err) {
-      console.error('Export failed:', err);
-    }
-  };
-
-  const convertToCSV = (data: any[]): string => {
-    if (data.length === 0) return '';
-    
-    const headers = Object.keys(data[0]).join(',');
-    const rows = data.map(item => 
-      Object.values(item).map(value => 
-        typeof value === 'string' ? `"${value.replace(/"/g, '""')}"` : value
-      ).join(',')
-    );
-    
-    return [headers, ...rows].join('\n');
-  };
-
-  const downloadFile = (content: string, filename: string, mimeType: string) => {
-    const blob = new Blob([content], { type: mimeType });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    window.URL.revokeObjectURL(url);
-  };
-
-  const isLoading = Object.values(state.loading).some(loading => loading);
-  const isStatsLoaded = !state.loading.stats && state.stats !== null;
+    return () => clearInterval(interval);
+  }, [loadingStates]);
 
   return {
-    ...state,
-    loading: isLoading,
-    loadingStates: state.loading,
+    stats,
+    userFlows,
+    productAnalytics,
+    couponAnalytics,
+    productFeedback,
+    loadingStates,
     isStatsLoaded,
+    error,
     exportData,
-    refetch: fetchAllData
+    refreshData,
   };
 };

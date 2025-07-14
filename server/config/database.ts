@@ -1,62 +1,102 @@
+// server/config/database.ts - NEW_DB Only Configuration
 import { MongoClient, Db } from 'mongodb';
 import dotenv from 'dotenv';
+
 dotenv.config();
 
-// Use environment variables for database connections
-const OLD_DB_URI = process.env.OLD_DB_URI || '';
-const NEW_DB_URI = process.env.NEW_DB_URI || '';
+let newDbConnection: Db | null = null;
+let newClient: MongoClient | null = null;
 
-if (!OLD_DB_URI || !NEW_DB_URI) {
-  console.error('Database URIs not configured. Please set OLD_DB_URI and NEW_DB_URI environment variables.');
-}
-
-let oldDbClient: MongoClient;
-let newDbClient: MongoClient;
-let oldDb: Db;
-let newDb: Db;
-
-export const connectDatabases = async () => {
+// Connect to NEW database only
+export const connectToNewDatabase = async (): Promise<void> => {
   try {
-    if (!OLD_DB_URI || !NEW_DB_URI) {
-      throw new Error('Database URIs not configured');
+    const NEW_DB_URI = process.env.NEW_DB_URI;
+    
+    if (!NEW_DB_URI) {
+      throw new Error('NEW_DB_URI environment variable is not defined');
     }
 
-    // Connect to old database
-    oldDbClient = new MongoClient(OLD_DB_URI);
-    await oldDbClient.connect();
-    oldDb = oldDbClient.db('GOAT_activation_database');
-    console.log('Connected to old database');
+    console.log('Connecting to NEW database...');
+    
+    newClient = new MongoClient(NEW_DB_URI, {
+      maxPoolSize: 10,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    });
 
-    // Connect to new database  
-    newDbClient = new MongoClient(NEW_DB_URI);
-    await newDbClient.connect();
-    newDb = newDbClient.db('GOAT_activation_database');
-    console.log('Connected to new database');
+    await newClient.connect();
+    newDbConnection = newClient.db(); // Uses default database from connection string
+    
+    console.log('✅ Connected to NEW database successfully');
+    
+    // Test the connection
+    await newDbConnection.admin().ping();
+    console.log('✅ NEW database ping successful');
+    
   } catch (error) {
-    console.error('Database connection error:', error);
+    console.error('❌ Failed to connect to NEW database:', error);
     throw error;
   }
 };
 
-export const getOldDb = (): Db => {
-  if (!oldDb) {
-    throw new Error('Old database not connected');
-  }
-  return oldDb;
-};
-
+// Get NEW database connection
 export const getNewDb = (): Db => {
-  if (!newDb) {
-    throw new Error('New database not connected');
+  if (!newDbConnection) {
+    throw new Error('NEW database not connected. Call connectToNewDatabase() first.');
   }
-  return newDb;
+  return newDbConnection;
 };
 
-export const closeDatabases = async () => {
-  if (oldDbClient) {
-    await oldDbClient.close();
-  }
-  if (newDbClient) {
-    await newDbClient.close();
+// Close database connections
+export const closeDatabaseConnections = async (): Promise<void> => {
+  try {
+    if (newClient) {
+      await newClient.close();
+      console.log('✅ NEW database connection closed');
+    }
+  } catch (error) {
+    console.error('❌ Error closing database connections:', error);
   }
 };
+
+// Health check for database
+export const checkDatabaseHealth = async (): Promise<{ newDb: boolean }> => {
+  const health = {
+    newDb: false
+  };
+
+  try {
+    if (newDbConnection) {
+      await newDbConnection.admin().ping();
+      health.newDb = true;
+    }
+  } catch (error) {
+    console.error('Database health check failed:', error);
+  }
+
+  return health;
+};
+
+// Initialize database connections
+export const initializeDatabases = async (): Promise<void> => {
+  try {
+    await connectToNewDatabase();
+    console.log('✅ All database connections initialized');
+  } catch (error) {
+    console.error('❌ Database initialization failed:', error);
+    throw error;
+  }
+};
+
+// Handle graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('🔄 Gracefully shutting down database connections...');
+  await closeDatabaseConnections();
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  console.log('🔄 Gracefully shutting down database connections...');
+  await closeDatabaseConnections();
+  process.exit(0);
+});

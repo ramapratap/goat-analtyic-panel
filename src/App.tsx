@@ -7,7 +7,6 @@ import UserFlowAnalytics from './components/Analytics/UserFlowAnalytics';
 import ProductAnalytics from './components/Analytics/ProductAnalytics';
 import ProductFeedback from './components/Analytics/ProductFeedback';
 import CouponAnalytics from './components/Analytics/CouponAnalytics';
-import HeroDeals from './components/Analytics/HeroDeals';
 import UserManagement from './components/UserManagement/UserManagement';
 import FilterPanel from './components/FilterPanel';
 import { useAnalytics } from './hooks/useAnalytics';
@@ -34,8 +33,7 @@ const Dashboard: React.FC = () => {
     userFlows, 
     productAnalytics, 
     couponAnalytics, 
-    productFeedback, 
-    heroDeals,
+    productFeedback,
     loadingStates,
     isStatsLoaded,
     error, 
@@ -115,19 +113,6 @@ const Dashboard: React.FC = () => {
             )}
           </div>
         );
-      case 'hero-deals':
-        return (
-          <div>
-            {loadingStates.heroDeals ? (
-              <div className="p-6 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                <span className="ml-3 text-gray-600">Loading hero deals...</span>
-              </div>
-            ) : (
-              <HeroDeals onExport={exportData} />
-            )}
-          </div>
-        );
       case 'user-flows':
         return (
           <div>
@@ -155,7 +140,7 @@ const Dashboard: React.FC = () => {
         onTabChange={setActiveTab}
       />
       <div className="flex-1 overflow-auto">
-        {(activeTab === 'dashboard' || activeTab === 'user-flows' || activeTab === 'products' || activeTab === 'product-feedback' || activeTab === 'coupons' || activeTab === 'hero-deals') && (
+        {(activeTab === 'dashboard' || activeTab === 'user-flows' || activeTab === 'products' || activeTab === 'product-feedback' || activeTab === 'coupons') && (
           <div className="p-6 pb-0">
             <FilterPanel filters={filters} onFiltersChange={setFilters} />
           </div>

@@ -9,24 +9,24 @@ interface ProductAnalyticsProps {
   onExport: (type: 'products', format: 'csv' | 'json') => void;
 }
 
-const ProductAnalytics: React.FC<ProductAnalyticsProps> = ({ productAnalytics, onExport }) => {
+const ProductAnalytics: React.FC<ProductAnalyticsProps> = ({ productAnalytics, onExport }:any) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedBrand, setSelectedBrand] = useState('all');
   const [selectedCategory, setSelectedCategory] = useState('all');
 
-  const filteredProducts = productAnalytics.filter(product => {
-    const matchesSearch = product.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         product.brand.toLowerCase().includes(searchTerm.toLowerCase());
+  const filteredProducts = productAnalytics.filter((product:any) => {
+    const matchesSearch = product.productName?.toLowerCase().includes(searchTerm?.toLowerCase()) ||
+                         product.brand?.toLowerCase().includes(searchTerm?.toLowerCase());
     const matchesBrand = selectedBrand === 'all' || product.brand === selectedBrand;
     const matchesCategory = selectedCategory === 'all' || product.category === selectedCategory;
     
     return matchesSearch && matchesBrand && matchesCategory;
   });
 
-  const brands = [...new Set(productAnalytics.map(product => product.brand))];
-  const categories = [...new Set(productAnalytics.map(product => product.category))];
+  const brands = [...new Set(productAnalytics.map((product:any) => product.brand))];
+  const categories = [...new Set(productAnalytics.map((product:any) => product.category))];
 
-  const chartData = filteredProducts.slice(0, 10).map(product => ({
+  const chartData = filteredProducts.slice(0, 10).map((product:any) => ({
     name: product.productName.substring(0, 20) + '...',
     success: product.successCount,
     errors: product.errorCount,
@@ -86,7 +86,7 @@ const ProductAnalytics: React.FC<ProductAnalyticsProps> = ({ productAnalytics, o
             className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           >
             <option value="all">All Brands</option>
-            {brands.map(brand => (
+            {brands.map((brand:any) => (
               <option key={brand} value={brand}>{brand}</option>
             ))}
           </select>
@@ -97,7 +97,7 @@ const ProductAnalytics: React.FC<ProductAnalyticsProps> = ({ productAnalytics, o
             className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           >
             <option value="all">All Categories</option>
-            {categories.map(category => (
+            {categories.map((category:any) => (
               <option key={category} value={category}>{category}</option>
             ))}
           </select>
@@ -117,7 +117,7 @@ const ProductAnalytics: React.FC<ProductAnalyticsProps> = ({ productAnalytics, o
               </tr>
             </thead>
             <tbody>
-              {filteredProducts.map((product, index) => (
+              {filteredProducts.map((product:any, index:any) => (
                 <tr key={product.id} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
                   <td className="py-3 px-4">
                     <div>
@@ -150,13 +150,13 @@ const ProductAnalytics: React.FC<ProductAnalyticsProps> = ({ productAnalytics, o
                   <td className="py-3 px-4">
                     <div className="flex items-center gap-2">
                       {product.imageDetected && (
-                        <CheckCircle className="w-4 h-4 text-green-600" title="Image Detected" />
+                        <CheckCircle className="w-4 h-4 text-green-600" />
                       )}
                       {product.brandDetected && (
-                        <CheckCircle className="w-4 h-4 text-blue-600" title="Brand Detected" />
+                        <CheckCircle className="w-4 h-4 text-blue-600" />
                       )}
                       {!product.imageDetected && !product.brandDetected && (
-                        <AlertCircle className="w-4 h-4 text-red-600" title="No Detection" />
+                        <AlertCircle className="w-4 h-4 text-red-600" />
                       )}
                     </div>
                   </td>

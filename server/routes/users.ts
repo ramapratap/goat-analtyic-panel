@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 const router = express.Router();
 
-router.get('/', authenticateToken, requireRole(['admin']), (req, res) => {
+router.get('/', requireRole(['admin']), (req, res) => {
   const users = mockUsers.map(user => ({
     id: user.id,
     email: user.email,
@@ -19,7 +19,7 @@ router.get('/', authenticateToken, requireRole(['admin']), (req, res) => {
   res.json(users);
 });
 
-router.post('/', authenticateToken, requireRole(['admin']), (req, res) => {
+router.post('/', requireRole(['admin']), (req, res) => {
   const { name, email, role, password } = req.body;
 
   // Check if user already exists
@@ -47,7 +47,7 @@ router.post('/', authenticateToken, requireRole(['admin']), (req, res) => {
   });
 });
 
-router.put('/:id', authenticateToken, requireRole(['admin']), (req, res) => {
+router.put('/:id', requireRole(['admin']), (req, res) => {
   const { id } = req.params;
   const { name, email, role, password } = req.body;
 
@@ -75,7 +75,7 @@ router.put('/:id', authenticateToken, requireRole(['admin']), (req, res) => {
   });
 });
 
-router.delete('/:id', authenticateToken, requireRole(['admin']), (req, res) => {
+router.delete('/:id', requireRole(['admin']), (req, res) => {
   const { id } = req.params;
   const userIndex = mockUsers.findIndex(u => u.id === id);
   

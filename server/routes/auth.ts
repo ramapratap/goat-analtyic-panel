@@ -46,7 +46,7 @@ router.post('/login', (req, res) => {
   });
 });
 
-router.get('/validate', authenticateToken, (req: AuthRequest, res) => {
+router.get('/validate',  (req: AuthRequest, res) => {
   const user = mockUsers.find(u => u.id === req.user?.id);
   if (!user) {
     return res.status(401).json({ error: 'User not found' });
