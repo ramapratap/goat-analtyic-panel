@@ -203,19 +203,40 @@ router.get('/coupons', async (req: AuthRequest, res) => {
       return res.json(cachedData);
     }
 
-    console.log('Fetching coupon analytics...');
+    console.log('🔄 Fetching coupon analytics from database...');
 
-    // Import the coupon service functions
-    const { generateOptimizedCouponAnalytics, getCouponSummaryStats } = await import('../services/couponService');
+    // Import the coupon service functions with proper error handling
+    let generateOptimizedCouponAnalytics, getCouponSummaryStats;
+    try {
+      const couponService = await import('../services/couponService');
+      generateOptimizedCouponAnalytics = couponService.generateOptimizedCouponAnalytics;
+      getCouponSummaryStats = couponService.getCouponSummaryStats;
+      console.log('✅ Coupon service imported successfully');
+    } catch (importError) {
+      console.error('❌ Error importing coupon service:', importError);
+      return res.status(500).json({ error: 'Failed to load coupon service' });
+    }
     
-    const [couponAnalytics, summaryStats] = await Promise.all([
-      generateOptimizedCouponAnalytics().catch(() => []),
-      summary ? getCouponSummaryStats().catch(() => null) : Promise.resolve(null)
+    console.log('📊 Generating coupon analytics...');
+    const [couponAnalytics, summaryStats] = await Promise.allSettled([
+      generateOptimizedCouponAnalytics(),
+      summary ? getCouponSummaryStats() : Promise.resolve(null)
     ]);
     
-    let filteredAnalytics = couponAnalytics;
+    // Extract results from PromiseSettledResult
+    const analyticsResult = couponAnalytics.status === 'fulfilled' ? couponAnalytics.value : [];
+    const summaryResult = summaryStats.status === 'fulfilled' ? summaryStats.value : null;
+    
+    if (couponAnalytics.status === 'rejected') {
+      console.error('❌ Error generating coupon analytics:', couponAnalytics.reason);
+    }
+    if (summaryStats.status === 'rejected') {
+      console.error('❌ Error generating summary stats:', summaryStats.reason);
+    }
+    
+    let filteredAnalytics = analyticsResult;
     if (type) {
-      filteredAnalytics = couponAnalytics.filter((c: any) => 
+      filteredAnalytics = analyticsResult.filter((c: any) => 
         Object.keys(c.couponTypes).some(t => t.toLowerCase() === type.toString().toLowerCase())
       );
     }
@@ -234,16 +255,31 @@ router.get('/coupons', async (req: AuthRequest, res) => {
 
     const result = {
       analytics: limitedAnalytics,
-      summary: summary ? summaryStats : analyticsummary,
+      summary: summary ? summaryResult : analyticsummary,
       totalRecords: filteredAnalytics.length,
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      debug: {
+        analyticsCount: analyticsResult.length,
+        filteredCount: filteredAnalytics.length,
+        summaryAvailable: !!summaryResult
+      }
     };
+
+    console.log('✅ Coupon analytics response prepared:', {
+      analyticsCount: result.analytics.length,
+      totalRecords: result.totalRecords,
+      hasSummary: !!result.summary
+    });
 
     setCachedData(cacheKey, result);
     res.json(result);
   } catch (error) {
-    console.error('Coupon analytics error:', error);
-    res.status(500).json({ error: 'Failed to fetch coupon analytics' });
+    console.error('❌ Coupon analytics error:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch coupon analytics',
+      details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
+      timestamp: new Date().toISOString()
+    });
   }
 });
 

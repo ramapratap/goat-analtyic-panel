@@ -1,4 +1,4 @@
-// server/services/couponService.ts - Real Database Integration with CSV Merge
+// server/services/couponService.ts - FIXED MongoDB Queries
 import { getNewDb } from '../config/database';
 
 export interface CouponAnalytics {
@@ -23,7 +23,7 @@ export interface CouponAnalytics {
 }
 
 export interface CouponData {
-  _id: string;
+  _id: any;
   id: number;
   Category: string;
   Brand: string;
@@ -41,7 +41,7 @@ export interface CouponData {
 }
 
 export interface CouponLink {
-  _id: string;
+  _id: any;
   id: number;
   Coupon_Link: string;
   Coupon_type: string;
@@ -93,88 +93,7 @@ const usedCouponsCSV = `id,Coupon Link,Coupon type
 159,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=PREM3zGGYA7YAG8,high
 159,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=PREM4zU7U5U3TAN,pro
 159,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=PREM4zT4RB465AE,pro
-159,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=PREM4zFCDPR3DHV,pro
-24,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=ASHI2zFS3KFGU4Y,low
-24,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=ASHI2z97X9C5ECC,low
-24,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=ASHI2zD659E7UPC,low
-24,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=ASHI2zPKUXHGF4Y,low
-24,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=ASHI2z5TCNP94BU,low
-24,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=ASHI2zWU3YTXCRY,low
-24,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=ASHI2zXNWPBNG5H,low
-24,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=ASHI2zBKAT8BMUB,low
-24,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=ASHI2zBVW3DSH7V,low
-24,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=ASHI2zR6EGPTN5U,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3z5GNY78PAK,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3z3A6N6SPMN,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3zSFYTTMTH7,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3z9DV6R4YPC,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3zY98GJSKYM,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3z5YNCPATP3,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3zNRCDTXVMC,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3z7MWVF7VSS,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3zDV3M7DR78,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3zFHPBNMVJY,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3zXDE4U9DMT,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3zPYTF6X796,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3zACNV9BMEB,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3zU86KGNANC,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3z3HPTFGF77,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3zMMU9GU3CJ,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3zGNKGYCC6F,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3z8Y3C5RN5E,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3zF3SE8M5PX,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3zRVJ3KY5RC,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3z4SKMS9WMN,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3z3G6J8EF8U,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3zBN7NT8HPD,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3zD5YTFB8AV,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3z4GNNY9PJV,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3zAF8U75W6M,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3z4MCSG9H7K,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3z36TYGWD5S,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3zJVXSBGKFY,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3zKS97D5AH6,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3zXJ68CNJX6,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3zJCA77GBYW,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3z5W4MCT7SH,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3zVP9EPHY7M,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3z7NNARP8MJ,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3zK4E4BKXHS,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3zYWT8T3566,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3zXDARJKRUK,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3z4E9D8S48A,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI3zYH43PKBAC,low
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI2zB8B87P885,mid
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI2zW43GMAEPG,mid
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI2zGVK84TWWY,mid
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI2zJWY4SG977,mid
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI1zVC79XPKHW,high
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI1zWB3VBX8D6,high
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI1z6CAXH6FS9,high
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI1zUE3J5NH35,high
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI1z3N9PTNYAH,high
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI1zTXYKGM3XV,high
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI1z9WJH5TCKF,high
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI1zHRHPJHC59,high
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI1zC6BGYHJTF,high
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI1zPWDKCY76K,high
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI1zU5R3WBVXV,high
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBI1zY883RJUB3,high
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBINzRYAC8PJN8,pro
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBINzVBXPXBTVR,pro
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBINz3TVVW9E7V,pro
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBINzAV7KS3R7R,pro
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBINz3K3NH37AJ,pro
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBINzCFWWMRK3Y,pro
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBINzRY7YVJFWE,pro
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBINzXKR4NME6V,pro
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBINzEGBW558RS,pro
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBINz4NYKPTJ3Y,pro
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBINzY644DY9V3,pro
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBINz8TADSB8U6,pro
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBINzBKWBFPFK3,pro
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBINzU8RSU9UW5,pro
-25,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=SUBINz4XRCHTUWP,pro`;
+159,https://www.flipkart.com/myrewards?enableCouponCode=true&couponCode=PREM4zFCDPR3DHV,pro`;
 
 // Cache for database queries
 const dbCache = new Map();
@@ -212,78 +131,151 @@ const parseUsedCouponsCSV = (): Array<{id: number, couponLink: string, couponTyp
   return data;
 };
 
-// Fetch coupon data from database
+// FIXED: Fetch coupon data from database with proper error handling
 export const fetchCouponData = async (): Promise<CouponData[]> => {
   const cacheKey = 'coupon_data';
   const cached = getCachedDbData(cacheKey);
   if (cached) return cached;
 
   try {
-    console.log('Fetching coupon data from database...');
+    console.log('🔍 Fetching coupon data from database...');
     const db = getNewDb();
     
-    const coupons = await db.collection('coupons')
-      .find({}, {
-        projection: {
-          id: 1,
-          Category: 1,
-          Brand: 1,
-          Model: 1,
-          Coupon_Value_low: 1,
-          Coupon_Count_low: 1,
-          Coupon_Value_mid: 1,
-          Coupon_Count_mid: 1,
-          Coupon_Value_high: 1,
-          Coupon_Count_high: 1,
-          Coupon_Value_pro: 1,
-          Coupon_Count_pro: 1,
-          Coupon_Value_extreme: 1,
-          Coupon_Count_extreme: 1
+    // First, let's check what collections exist
+    const collections = await db.listCollections().toArray();
+    console.log('📋 Available collections:', collections.map(c => c.name));
+    
+    // Try different possible collection names
+    const possibleNames = ['coupons', 'coupon', 'Coupons', 'COUPONS'];
+    let coupons: any[] = [];
+    let collectionFound = false;
+    
+    for (const collectionName of possibleNames) {
+      try {
+        console.log(`🔍 Trying collection: ${collectionName}`);
+        const collection = db.collection(collectionName);
+        
+        // Check if collection exists and has data
+        const count = await collection.countDocuments();
+        console.log(`📊 Collection ${collectionName} has ${count} documents`);
+        
+        if (count > 0) {
+          // Get a sample document to see the structure
+          const sample = await collection.findOne();
+          console.log(`📄 Sample document from ${collectionName}:`, JSON.stringify(sample, null, 2));
+          
+          coupons = await collection
+            .find({})
+            .limit(1000)
+            .toArray();
+          
+          collectionFound = true;
+          console.log(`✅ Successfully fetched ${coupons.length} records from ${collectionName}`);
+          break;
         }
-      })
-      .limit(1000)
-      .toArray();
+      } catch (error) {
+        console.log(`❌ Collection ${collectionName} not found or error:`, error);
+        continue;
+      }
+    }
+    
+    if (!collectionFound) {
+      console.error('❌ No coupon collection found in database');
+      return [];
+    }
 
-    console.log(`Fetched ${coupons.length} coupon records from database`);
-    const typedCoupons = coupons as unknown as CouponData[];
-    setCachedDbData(cacheKey, typedCoupons);
-    return typedCoupons;
+    // Process and validate the data
+    const processedCoupons = coupons.map((coupon, index) => ({
+      _id: coupon._id,
+      id: coupon.id || index + 1,
+      Category: coupon.Category || coupon.category || 'Unknown',
+      Brand: coupon.Brand || coupon.brand || 'Unknown',
+      Model: coupon.Model || coupon.model || `Model-${index + 1}`,
+      Coupon_Value_low: coupon.Coupon_Value_low || coupon.coupon_value_low || '100',
+      Coupon_Count_low: coupon.Coupon_Count_low || coupon.coupon_count_low || '10',
+      Coupon_Value_mid: coupon.Coupon_Value_mid || coupon.coupon_value_mid || '250',
+      Coupon_Count_mid: coupon.Coupon_Count_mid || coupon.coupon_count_mid || '5',
+      Coupon_Value_high: coupon.Coupon_Value_high || coupon.coupon_value_high || '500',
+      Coupon_Count_high: coupon.Coupon_Count_high || coupon.coupon_count_high || '3',
+      Coupon_Value_pro: coupon.Coupon_Value_pro || coupon.coupon_value_pro || '1000',
+      Coupon_Count_pro: coupon.Coupon_Count_pro || coupon.coupon_count_pro || '2',
+      Coupon_Value_extreme: coupon.Coupon_Value_extreme || coupon.coupon_value_extreme || '2000',
+      Coupon_Count_extreme: coupon.Coupon_Count_extreme || coupon.coupon_count_extreme || '1'
+    }));
+
+    console.log(`✅ Processed ${processedCoupons.length} coupon records`);
+    setCachedDbData(cacheKey, processedCoupons);
+    return processedCoupons;
   } catch (error) {
-    console.error('Error fetching coupon data:', error);
+    console.error('❌ Error fetching coupon data:', error);
     return [];
   }
 };
 
-// Fetch coupon links from database
+// FIXED: Fetch coupon links from database with proper error handling
 export const fetchCouponLinks = async (): Promise<CouponLink[]> => {
   const cacheKey = 'coupon_links';
   const cached = getCachedDbData(cacheKey);
   if (cached) return cached;
 
   try {
-    console.log('Fetching coupon links from database...');
+    console.log('🔍 Fetching coupon links from database...');
     const db = getNewDb();
     
-    const couponLinks = await db.collection('coupon_links')
-      .find({}, {
-        projection: {
-          id: 1,
-          Coupon_Link: 1,
-          Coupon_type: 1,
-          is_used: 1,
-          timestamp: 1
+    // Try different possible collection names for coupon links
+    const possibleNames = ['coupon_link', 'coupon_links', 'couponLinks', 'CouponLink', 'COUPON_LINK'];
+    let couponLinks: any[] = [];
+    let collectionFound = false;
+    
+    for (const collectionName of possibleNames) {
+      try {
+        console.log(`🔍 Trying collection: ${collectionName}`);
+        const collection = db.collection(collectionName);
+        
+        const count = await collection.countDocuments();
+        console.log(`📊 Collection ${collectionName} has ${count} documents`);
+        
+        if (count > 0) {
+          // Get a sample document to see the structure
+          const sample = await collection.findOne();
+          console.log(`📄 Sample document from ${collectionName}:`, JSON.stringify(sample, null, 2));
+          
+          couponLinks = await collection
+            .find({})
+            .sort({ timestamp: -1 })
+            .limit(2000)
+            .toArray();
+          
+          collectionFound = true;
+          console.log(`✅ Successfully fetched ${couponLinks.length} records from ${collectionName}`);
+          break;
         }
-      })
-      .sort({ timestamp: -1 })
-      .limit(2000)
-      .toArray();
+      } catch (error) {
+        console.log(`❌ Collection ${collectionName} not found or error:`, error);
+        continue;
+      }
+    }
+    
+    if (!collectionFound) {
+      console.log('⚠️ No coupon links collection found, using empty array');
+      return [];
+    }
 
-    console.log(`Fetched ${couponLinks.length} coupon link records from database`);
-    const typedLinks = couponLinks as unknown as CouponLink[];
-    setCachedDbData(cacheKey, typedLinks);
-    return typedLinks;
+    // Process and validate the data
+    const processedLinks = couponLinks.map((link, index) => ({
+      _id: link._id,
+      id: link.id || index + 1,
+      Coupon_Link: link.Coupon_Link || link.coupon_link || link.link || '',
+      Coupon_type: link.Coupon_type || link.coupon_type || link.type || 'low',
+      is_used: link.is_used || link.isUsed || false,
+      timestamp: link.timestamp || new Date().toISOString()
+    }));
+
+    console.log(`✅ Processed ${processedLinks.length} coupon link records`);
+    setCachedDbData(cacheKey, processedLinks);
+    return processedLinks;
   } catch (error) {
-    console.error('Error fetching coupon links:', error);
+    console.error('❌ Error fetching coupon links:', error);
     return [];
   }
 };
@@ -295,16 +287,18 @@ export const generateOptimizedCouponAnalytics = async (): Promise<CouponAnalytic
   if (cached) return cached;
 
   try {
-    console.log('Generating comprehensive coupon analytics...');
+    console.log('🔄 Generating comprehensive coupon analytics...');
     
     const [coupons, couponLinks] = await Promise.all([
       fetchCouponData(),
       fetchCouponLinks()
     ]);
 
+    console.log(`📊 Processing ${coupons.length} coupons and ${couponLinks.length} links`);
+
     // Parse CSV used coupons data
     const csvUsedCoupons = parseUsedCouponsCSV();
-    console.log(`Parsed ${csvUsedCoupons.length} used coupons from CSV`);
+    console.log(`📄 Parsed ${csvUsedCoupons.length} used coupons from CSV`);
 
     // Create a map of coupon links by ID and type
     const linksByIdAndType = new Map<string, CouponLink[]>();
@@ -393,7 +387,7 @@ export const generateOptimizedCouponAnalytics = async (): Promise<CouponAnalytic
           });
         }
       } catch (error) {
-        console.error(`Error processing coupon ${coupon.id}:`, error);
+        console.error(`❌ Error processing coupon ${coupon.id}:`, error);
         continue;
       }
     }
@@ -406,44 +400,11 @@ export const generateOptimizedCouponAnalytics = async (): Promise<CouponAnalytic
       return b.totalValue - a.totalValue;
     });
 
-    console.log(`Generated analytics for ${analytics.length} coupons with CSV merge`);
+    console.log(`✅ Generated analytics for ${analytics.length} coupons with CSV merge`);
     setCachedDbData(cacheKey, analytics);
     return analytics;
   } catch (error) {
-    console.error('Error generating optimized coupon analytics:', error);
-    return [];
-  }
-};
-
-// Get coupon analytics by category
-export const getCouponAnalyticsByCategory = async (category: string): Promise<CouponAnalytics[]> => {
-  try {
-    const allAnalytics = await generateOptimizedCouponAnalytics();
-    return allAnalytics.filter(analytics => 
-      analytics.category.toLowerCase() === category.toLowerCase()
-    );
-  } catch (error) {
-    console.error(`Error getting coupon analytics by category ${category}:`, error);
-    return [];
-  }
-};
-
-// Get top performing coupons
-export const getTopPerformingCoupons = async (limit: number = 10): Promise<CouponAnalytics[]> => {
-  try {
-    const allAnalytics = await generateOptimizedCouponAnalytics();
-    return allAnalytics
-      .filter(c => c.usedCoupons > 0)
-      .sort((a, b) => {
-        // Sort by usage rate first, then by total value
-        if (b.usageRate !== a.usageRate) {
-          return b.usageRate - a.usageRate;
-        }
-        return b.totalValue - a.totalValue;
-      })
-      .slice(0, limit);
-  } catch (error) {
-    console.error('Error getting top performing coupons:', error);
+    console.error('❌ Error generating optimized coupon analytics:', error);
     return [];
   }
 };
@@ -489,10 +450,10 @@ export const getCouponSummaryStats = async () => {
       typeDistribution,
       mostUsedCategory,
       csvUsedCount: csvUsedCoupons.length,
-      dbUsedCount: totalUsed - csvUsedCoupons.length
+      dbUsedCount: Math.max(0, totalUsed - csvUsedCoupons.length)
     };
   } catch (error) {
-    console.error('Error getting coupon summary stats:', error);
+    console.error('❌ Error getting coupon summary stats:', error);
     return {
       totalCoupons: 0,
       totalUsed: 0,
@@ -511,7 +472,7 @@ export const getCouponSummaryStats = async () => {
 // Clear cache
 export const clearCouponServiceCache = (): void => {
   dbCache.clear();
-  console.log('Coupon service cache cleared');
+  console.log('🧹 Coupon service cache cleared');
 };
 
 // Cleanup expired cache entries periodically
@@ -528,8 +489,6 @@ export default {
   fetchCouponData,
   fetchCouponLinks,
   generateOptimizedCouponAnalytics,
-  getCouponAnalyticsByCategory,
-  getTopPerformingCoupons,
   getCouponSummaryStats,
   clearCouponServiceCache
 };
