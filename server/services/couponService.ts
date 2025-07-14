@@ -29,16 +29,16 @@ export interface CouponData {
   'FSN List': string[];
   'Min Range': string;
   'Max Range': string;
-  Coupon_Value_low: string;
-  Coupon_Value_mid: string;
-  Coupon_Value_high: string;
-  Coupon_Value_pro: string;
-  Coupon_Value_extreme: string;
-  Coupon_Count_low: string;
-  Coupon_Count_mid: string;
-  Coupon_Count_high: string;
-  Coupon_Count_pro: string;
-  Coupon_Count_extreme: string;
+  'Coupon Value_low': string;
+  'Coupon Value_mid': string;
+  'Coupon Value_high': string;
+  'Coupon Value_pro': string;
+  'Coupon Value_extreme': string;
+  'Coupon Count_low': string;
+  'Coupon Count_mid': string;
+  'Coupon Count_high': string;
+  'Coupon Count_pro': string;
+  'Coupon Count_extreme': string;
 }
 
 export interface CouponLink {
@@ -87,16 +87,16 @@ export const fetchCouponData = async (): Promise<CouponData[]> => {
           Category: 1,
           Brand: 1,
           Model: 1,
-          Coupon_Value_low: 1,
-          Coupon_Count_low: 1,
-          Coupon_Value_mid: 1,
-          Coupon_Count_mid: 1,
-          Coupon_Value_high: 1,
-          Coupon_Count_high: 1,
-          Coupon_Value_pro: 1,
-          Coupon_Count_pro: 1,
-          Coupon_Value_extreme: 1,
-          Coupon_Count_extreme: 1
+          'Coupon Value_low': 1,
+          'Coupon Count_low': 1,
+          'Coupon Value_mid': 1,
+          'Coupon Count_mid': 1,
+          'Coupon Value_high': 1,
+          'Coupon Count_high': 1,
+          'Coupon Value_pro': 1,
+          'Coupon Count_pro': 1,
+          'Coupon Value_extreme': 1,
+          'Coupon Count_extreme': 1
         }
       })
       .limit(1000)
@@ -174,7 +174,6 @@ export const generateOptimizedCouponAnalytics = async (): Promise<CouponAnalytic
       fetchCouponData(),
       fetchCouponLinks()
     ]);
-
     if (coupons.length === 0) {
       console.warn('⚠️ No coupon data found');
       return [];
@@ -199,7 +198,7 @@ export const generateOptimizedCouponAnalytics = async (): Promise<CouponAnalytic
     const csvUsageMap = new Map<string, Map<string, number>>();
     usedCouponsCSV.forEach(csvCoupon => {
       const id = csvCoupon.id.toString();
-      const type = csvCoupon.couponType;
+      const type = csvCoupon['Coupon type'] as string;
       
       if (!csvUsageMap.has(id)) {
         csvUsageMap.set(id, new Map());
@@ -234,8 +233,8 @@ export const generateOptimizedCouponAnalytics = async (): Promise<CouponAnalytic
       let totalValue = 0;
 
       ['low', 'mid', 'high', 'pro', 'extreme'].forEach(type => {
-        const countField = `Coupon_Count_${type}` as keyof CouponData;
-        const valueField = `Coupon_Value_${type}` as keyof CouponData;
+        const countField = `Coupon Count_${type}` as keyof CouponData;
+        const valueField = `Coupon Value_${type}` as keyof CouponData;
         
         const count = parseNumericValue(coupon[countField] as string);
         const value = parseNumericValue(coupon[valueField] as string) || getCouponValue(type);
