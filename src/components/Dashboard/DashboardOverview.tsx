@@ -1,8 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Activity, ShoppingCart, TrendingUp, AlertCircle, QrCode, RefreshCw, Ticket, Smartphone, Monitor } from 'lucide-react';
+import { Users, Activity, ShoppingCart, TrendingUp, AlertCircle, QrCode, RefreshCw, Ticket, Smartphone, Monitor, DollarSign, Target, Award } from 'lucide-react';
 import { DashboardStats } from '../../types';
 import StatsCard from './StatsCard';
-import { fetchProductRecords, fetchQRScanData, parseSearchSource, isRealUser, categorizeProduct } from '../../services/externalApi';
+import { 
+  fetchProductRecords, 
+  fetchQRScanData, 
+  parseSearchSource, 
+  isRealUser, 
+  categorizeProduct, 
+  isInitialRequest,
+  calculatePlatformSavings,
+  getPlatformDistribution,
+  getFlipkartPriceNumeric
+} from '../../services/externalApi';
 import { generateCouponAnalytics } from '../../services/couponService';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 
@@ -10,13 +20,6 @@ interface DashboardOverviewProps {
   stats: DashboardStats | null;
   onRefreshQrScans: () => void;
 }
-
-// Helper function to check if record is an initial request
-const isInitialRequest = (searchSource: string): boolean => {
-  if (!searchSource) return false;
-  return searchSource.toLowerCase().includes('intial request') || 
-         searchSource.toLowerCase().includes('initial request');
-};
 
 const LoadingSkeleton: React.FC<{ className?: string }> = ({ className = "" }) => (
   <div className={`animate-pulse bg-gray-200 rounded ${className}`}></div>
@@ -80,15 +83,15 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
       
       const totalApiHits = initialRequests.length;
       
-      // Softline vs Hardline analysis
+      // Enhanced Softline vs Hardline analysis
       const softlineCount = realProductRecords.filter(record => {
         const sourceInfo = parseSearchSource(record.search_source);
-        return sourceInfo.category === 'Softline';
+        return sourceInfo.isSoftline;
       }).length;
       
       const hardlineCount = realProductRecords.filter(record => {
         const sourceInfo = parseSearchSource(record.search_source);
-        return sourceInfo.category === 'Hardline';
+        return sourceInfo.isHardline;
       }).length;
 
       // Exclusive products
@@ -96,31 +99,28 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
         record.exclusive && record.exclusive !== null
       ).length;
 
-      // Flipkart savings
-      const flipkartSavings = realProductRecords.reduce((total, record) => {
-        const sourceInfo = parseSearchSource(record.search_source);
-        if (sourceInfo.platform === 'Flipkart' && sourceInfo.savings) {
-          const savingsMatch = sourceInfo.savings.match(/₹([\d,]+)/);
-          if (savingsMatch) {
-            return total + parseInt(savingsMatch[1].replace(/,/g, ''));
-          }
-        }
-        return total;
-      }, 0);
-
-      // Platform distribution
-      const platformStats = realProductRecords.reduce((acc, record) => {
-        const sourceInfo = parseSearchSource(record.search_source);
-        const platform = sourceInfo.platform || 'Unknown';
-        acc[platform] = (acc[platform] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>);
+      // Enhanced platform savings calculation
+      const platformSavings = calculatePlatformSavings(realProductRecords);
+      const platformDistribution = getPlatformDistribution(realProductRecords);
 
       // Error analysis
       const errorCount = realProductRecords.filter(record => {
         const sourceInfo = parseSearchSource(record.search_source);
-        return sourceInfo.status === 'Error' || record.search_source?.toLowerCase().includes('error');
+        return sourceInfo.status === 'Error' || sourceInfo.status === 'Failed';
       }).length;
+
+      const successCount = realProductRecords.filter(record => {
+        const sourceInfo = parseSearchSource(record.search_source);
+        return sourceInfo.status === 'Success';
+      }).length;
+
+      // Input type analysis
+      const inputTypeStats = realProductRecords.reduce((acc, record) => {
+        const sourceInfo = parseSearchSource(record.search_source);
+        const type = sourceInfo.inputType || 'Unknown';
+        acc[type] = (acc[type] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
 
       // Category analysis for coupons
       const couponCategoryStats = couponAnalytics.reduce((acc, coupon) => {
@@ -131,20 +131,37 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
       const mostUsedCouponCategory = Object.entries(couponCategoryStats)
         .sort(([,a], [,b]) => b - a)[0]?.[0] || 'Fashion';
 
+      // Price analysis
+      const totalProductValue = realProductRecords.reduce((sum, record) => {
+        return sum + getFlipkartPriceNumeric(record.flipkart_price);
+      }, 0);
+
+      const avgProductPrice = realProductRecords.length > 0 ? totalProductValue / realProductRecords.length : 0;
+
       setRealTimeStats({
         totalApiHits,
         uniqueUsers,
         softlineCount,
         hardlineCount,
         exclusiveProducts,
-        flipkartSavings,
-        platformStats,
+        flipkartSavings: platformSavings.flipkartSavings,
+        amazonSavings: platformSavings.amazonSavings,
+        totalSavings: platformSavings.totalSavings,
+        flipkartWins: platformSavings.flipkartWins,
+        amazonWins: platformSavings.amazonWins,
+        platformDistribution,
         errorCount,
+        successCount,
+        successRate: realProductRecords.length > 0 ? ((successCount / realProductRecords.length) * 100).toFixed(1) : '0',
         qrScanCount: qrData.data?.qrData?.qr_scan_count || 0,
         mostUsedCouponCategory,
         totalCouponsUsed: couponAnalytics.reduce((sum, c) => sum + c.usedCoupons, 0),
         deviceBreakdown: qrData.data?.qrData?.analytics?.deviceBreakdown || { mobile: 0, tablet: 0, desktop: 0 },
-        dailyScans: qrData.data?.qrData?.analytics?.timeStats?.dailyScans || {}
+        dailyScans: qrData.data?.qrData?.analytics?.timeStats?.dailyScans || {},
+        inputTypeStats,
+        totalProductValue,
+        avgProductPrice,
+        totalProducts: realProductRecords.length
       });
     } catch (error) {
       console.error('Error loading real-time data:', error);
@@ -190,11 +207,10 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
     );
   }
 
-  const platformData = Object.entries(realTimeStats.platformStats).map(([platform, count]) => ({
-    name: platform,
-    value: count as number,
-    color: platform === 'Flipkart' ? '#F59E0B' : platform === 'Amazon' ? '#FF9500' : '#3B82F6'
-  }));
+  const platformData = [
+    { name: 'Flipkart', value: realTimeStats.flipkartWins, savings: realTimeStats.flipkartSavings, color: '#F59E0B' },
+    { name: 'Amazon', value: realTimeStats.amazonWins, savings: realTimeStats.amazonSavings, color: '#FF9500' },
+  ];
 
   const deviceData = Object.entries(realTimeStats.deviceBreakdown).map(([device, count]) => ({
     name: device,
@@ -209,10 +225,16 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
       scans: scans as number
     }));
 
+  const inputTypeData = Object.entries(realTimeStats.inputTypeStats).map(([type, count]) => ({
+    name: type,
+    value: count as number,
+    color: type === 'Image' ? '#10B981' : type === 'Text' ? '#3B82F6' : type === 'Amazon URL' ? '#FF9500' : '#8B5CF6'
+  }));
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-900">Dashboard Overview</h2>
+        <h2 className="text-2xl font-bold text-gray-900">Analytics Dashboard</h2>
         <div className="flex items-center gap-4">
           <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
             <div className="flex items-center justify-between gap-3">
@@ -244,6 +266,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
         </div>
       </div>
 
+      {/* Enhanced Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
         <StatsCard
           title="API Hits (Initial)"
@@ -272,25 +295,25 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
           color="purple"
         />
         <StatsCard
-          title="Exclusive Products"
-          value={realTimeStats.exclusiveProducts}
-          icon={Ticket}
-          color="pink"
+          title="Success Rate"
+          value={`${realTimeStats.successRate}%`}
+          icon={Target}
+          color="green"
         />
         <StatsCard
-          title="Error Messages"
+          title="Error Count"
           value={realTimeStats.errorCount}
           icon={AlertCircle}
           color="red"
         />
       </div>
 
-      {/* Additional Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* Platform Performance Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-yellow-600" />
+              <DollarSign className="w-5 h-5 text-yellow-600" />
             </div>
             <div>
               <h3 className="font-semibold text-gray-900">Flipkart Savings</h3>
@@ -298,48 +321,83 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
             </div>
           </div>
           <p className="text-sm text-gray-600">
-            Total savings when Flipkart is the best platform
+            {realTimeStats.flipkartWins} times Flipkart was cheaper
+          </p>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
+              <DollarSign className="w-5 h-5 text-orange-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">Amazon Savings</h3>
+              <p className="text-2xl font-bold text-orange-600">₹{realTimeStats.amazonSavings.toLocaleString()}</p>
+            </div>
+          </div>
+          <p className="text-sm text-gray-600">
+            {realTimeStats.amazonWins} times Amazon was cheaper
           </p>
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-              <Ticket className="w-5 h-5 text-green-600" />
+              <Award className="w-5 h-5 text-green-600" />
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900">Top Coupon Category</h3>
-              <p className="text-2xl font-bold text-green-600">{realTimeStats.mostUsedCouponCategory}</p>
+              <h3 className="font-semibold text-gray-900">Total Savings</h3>
+              <p className="text-2xl font-bold text-green-600">₹{realTimeStats.totalSavings.toLocaleString()}</p>
             </div>
           </div>
           <p className="text-sm text-gray-600">
-            Most frequently used coupon category
+            Combined platform savings
           </p>
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-              <Users className="w-5 h-5 text-blue-600" />
+              <TrendingUp className="w-5 h-5 text-blue-600" />
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900">Coupons Used</h3>
-              <p className="text-2xl font-bold text-blue-600">{realTimeStats.totalCouponsUsed}</p>
+              <h3 className="font-semibold text-gray-900">Avg Product Price</h3>
+              <p className="text-2xl font-bold text-blue-600">₹{Math.round(realTimeStats.avgProductPrice).toLocaleString()}</p>
             </div>
           </div>
           <p className="text-sm text-gray-600">
-            Total coupons redeemed by users
+            Across {realTimeStats.totalProducts} products
           </p>
         </div>
       </div>
 
+      {/* Enhanced Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Platform Distribution</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Platform Performance</h3>
+          <ResponsiveContainer width="100%" height={250}>
+            <BarChart data={platformData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" />
+              <YAxis />
+              <Tooltip 
+                formatter={(value, name) => [
+                  name === 'value' ? `${value} wins` : `₹${value.toLocaleString()}`,
+                  name === 'value' ? 'Wins' : 'Savings'
+                ]}
+              />
+              <Bar dataKey="value" fill="#3B82F6" name="Wins" />
+              <Bar dataKey="savings" fill="#10B981" name="Savings" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Input Type Distribution</h3>
           <ResponsiveContainer width="100%" height={250}>
             <PieChart>
               <Pie
-                data={platformData}
+                data={inputTypeData}
                 cx="50%"
                 cy="50%"
                 labelLine={false}
@@ -348,7 +406,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
                 fill="#8884d8"
                 dataKey="value"
               >
-                {platformData.map((entry, index) => (
+                {inputTypeData.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={entry.color} />
                 ))}
               </Pie>
@@ -379,10 +437,13 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
             </PieChart>
           </ResponsiveContainer>
         </div>
+      </div>
 
+      {/* QR Scan Trends */}
+      {dailyScanData.length > 0 && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">QR Scan Trends (7 Days)</h3>
-          <ResponsiveContainer width="100%" height={250}>
+          <ResponsiveContainer width="100%" height={300}>
             <LineChart data={dailyScanData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="date" />
@@ -392,37 +453,37 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
             </LineChart>
           </ResponsiveContainer>
         </div>
-      </div>
+      )}
 
-      {/* Real-time Insights */}
+      {/* Enhanced Insights */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Key Insights</h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Key Performance Insights</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-blue-50 rounded-lg p-4">
             <h4 className="font-medium text-blue-900 mb-2">User Engagement</h4>
             <p className="text-sm text-blue-700">
-              {realTimeStats.uniqueUsers} unique users generated {realTimeStats.totalApiHits} API requests
+              {realTimeStats.uniqueUsers} unique users with {realTimeStats.totalApiHits} initial requests
             </p>
           </div>
           
           <div className="bg-green-50 rounded-lg p-4">
             <h4 className="font-medium text-green-900 mb-2">Product Categories</h4>
             <p className="text-sm text-green-700">
-              {realTimeStats.softlineCount} Softline vs {realTimeStats.hardlineCount} Hardline products
+              {realTimeStats.hardlineCount} Hardline vs {realTimeStats.softlineCount} Softline products
             </p>
           </div>
           
           <div className="bg-yellow-50 rounded-lg p-4">
-            <h4 className="font-medium text-yellow-900 mb-2">Platform Performance</h4>
+            <h4 className="font-medium text-yellow-900 mb-2">Platform Savings</h4>
             <p className="text-sm text-yellow-700">
-              Flipkart savings: ₹{realTimeStats.flipkartSavings.toLocaleString()}
+              Total savings: ₹{realTimeStats.totalSavings.toLocaleString()} across platforms
             </p>
           </div>
           
           <div className="bg-purple-50 rounded-lg p-4">
-            <h4 className="font-medium text-purple-900 mb-2">Quality Metrics</h4>
+            <h4 className="font-medium text-purple-900 mb-2">Success Rate</h4>
             <p className="text-sm text-purple-700">
-              {realTimeStats.errorCount} errors out of {realTimeStats.totalApiHits + realTimeStats.uniqueUsers} total requests
+              {realTimeStats.successRate}% success rate with {realTimeStats.errorCount} errors
             </p>
           </div>
         </div>

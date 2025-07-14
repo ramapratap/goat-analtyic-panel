@@ -47,7 +47,7 @@ export interface QRScanData {
 }
 
 export interface ProductRecord {
-  _id: string;
+  _id: string | { $oid: string };
   product_name: string;
   price: string; // Contains user's uploaded image URL
   image_path: string;
@@ -207,7 +207,7 @@ export const fetchProductRecords = async (): Promise<ProductRecord[]> => {
   }
 };
 
-// Parse search source information
+// Enhanced search source parsing
 export const parseSearchSource = (searchSource: string) => {
   const info = {
     amazonName: '',
@@ -217,41 +217,77 @@ export const parseSearchSource = (searchSource: string) => {
     category: '',
     platform: '',
     savings: '',
-    status: ''
+    savingsAmount: 0,
+    status: '',
+    bestPlatform: '',
+    isHardline: false,
+    isSoftline: false,
+    isFlipkartCheaper: false,
+    isAmazonCheaper: false
   };
 
   if (!searchSource) return info;
 
-  // Extract amazon_name
-  const amazonMatch = searchSource.match(/amazon_name-->([^,]+)/);
-  if (amazonMatch) info.amazonName = amazonMatch[1].trim();
+  try {
+    // Extract amazon_name
+    const amazonMatch = searchSource.match(/amazon_name-->([^,]+)/);
+    if (amazonMatch) info.amazonName = amazonMatch[1].trim();
 
-  // Extract flipkart_name
-  const flipkartMatch = searchSource.match(/flipkart_name-->([^,]+)/);
-  if (flipkartMatch) info.flipkartName = flipkartMatch[1].trim();
+    // Extract flipkart_name
+    const flipkartMatch = searchSource.match(/flipkart_name-->([^,]+)/);
+    if (flipkartMatch) info.flipkartName = flipkartMatch[1].trim();
 
-  // Extract concise_name
-  const conciseMatch = searchSource.match(/concise_name-->([^A-Z]+)/);
-  if (conciseMatch) info.conciseName = conciseMatch[1].trim();
+    // Extract concise_name
+    const conciseMatch = searchSource.match(/concise_name-->([^A-Z]+)/);
+    if (conciseMatch) info.conciseName = conciseMatch[1].trim();
 
-  // Extract input type
-  if (searchSource.includes('image_url')) info.inputType = 'Image';
-  else if (searchSource.includes('Text')) info.inputType = 'Text';
+    // Extract input type
+    if (searchSource.includes('image_url')) info.inputType = 'Image';
+    else if (searchSource.includes('Text')) info.inputType = 'Text';
+    else if (searchSource.includes('amazon_url')) info.inputType = 'Amazon URL';
+    else if (searchSource.includes('flipkart_url')) info.inputType = 'Flipkart URL';
 
-  // Extract category
-  if (searchSource.includes('Hardline')) info.category = 'Hardline';
-  else if (searchSource.includes('Softline')) info.category = 'Softline';
+    // Extract category (Hardline/Softline)
+    if (searchSource.includes('Hardline')) {
+      info.category = 'Hardline';
+      info.isHardline = true;
+    } else if (searchSource.includes('Softline')) {
+      info.category = 'Softline';
+      info.isSoftline = true;
+    }
 
-  // Extract best platform and savings
-  const bestMatch = searchSource.match(/Best: ([^-]+) - Savings: ([^A-Z]+)/);
-  if (bestMatch) {
-    info.platform = bestMatch[1].trim();
-    info.savings = bestMatch[2].trim();
+    // Extract platform preference
+    if (searchSource.includes('Flipkart Cheaper')) {
+      info.isFlipkartCheaper = true;
+    } else if (searchSource.includes('Amazon Cheaper')) {
+      info.isAmazonCheaper = true;
+    }
+
+    // Extract best platform and savings
+    const bestMatch = searchSource.match(/Best:\s*([^-]+)\s*-\s*Savings:\s*(₹[\d,]+)/);
+    if (bestMatch) {
+      info.bestPlatform = bestMatch[1].trim().toLowerCase();
+      info.savings = bestMatch[2].trim();
+      
+      // Extract numeric savings amount
+      const savingsNumMatch = bestMatch[2].match(/₹([\d,]+)/);
+      if (savingsNumMatch) {
+        info.savingsAmount = parseInt(savingsNumMatch[1].replace(/,/g, ''));
+      }
+    }
+
+    // Extract status
+    if (searchSource.includes('SUCCESS')) {
+      info.status = 'Success';
+    } else if (searchSource.includes('ERROR')) {
+      info.status = 'Error';
+    } else if (searchSource.includes('FAILED')) {
+      info.status = 'Failed';
+    }
+
+  } catch (error) {
+    console.error('Error parsing search source:', error);
   }
-
-  // Extract status
-  if (searchSource.includes('SUCCESS')) info.status = 'Success';
-  else if (searchSource.includes('ERROR')) info.status = 'Error';
 
   return info;
 };
@@ -269,12 +305,29 @@ export const getFlipkartPrice = (flipkartPrice: any): string => {
   return '₹0';
 };
 
+// Get numeric price value
+export const getFlipkartPriceNumeric = (flipkartPrice: any): number => {
+  const priceStr = getFlipkartPrice(flipkartPrice);
+  const numMatch = priceStr.match(/₹?([\d,]+)/);
+  if (numMatch) {
+    return parseInt(numMatch[1].replace(/,/g, ''));
+  }
+  return 0;
+};
+
 // Get product link
 export const getProductLink = (flipkartPrice: any): string => {
   if (typeof flipkartPrice === 'object' && flipkartPrice?.link) {
     return flipkartPrice.link;
   }
   return '';
+};
+
+// Check if record is an initial request
+export const isInitialRequest = (searchSource: string): boolean => {
+  if (!searchSource) return false;
+  return searchSource.toLowerCase().includes('intial request') || 
+         searchSource.toLowerCase().includes('initial request');
 };
 
 // Utility functions
@@ -341,6 +394,12 @@ export const categorizeProduct = (category: string, productName: string): string
   if (name.includes('shoes') || name.includes('slides') || name.includes('footwear')) {
     return 'Footwear';
   }
+  if (name.includes('backpack') || name.includes('bag')) {
+    return 'Bags';
+  }
+  if (name.includes('shirt') || name.includes('tshirt') || name.includes('clothing')) {
+    return 'Clothing';
+  }
   
   return 'Electronics';
 };
@@ -370,15 +429,70 @@ export const getDailyScanTrends = (qrData: QRScanData) => {
   })).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 };
 
+// Calculate platform savings
+export const calculatePlatformSavings = (records: ProductRecord[]) => {
+  let flipkartSavings = 0;
+  let amazonSavings = 0;
+  let flipkartWins = 0;
+  let amazonWins = 0;
+
+  records.forEach(record => {
+    const sourceInfo = parseSearchSource(record.search_source);
+    
+    if (sourceInfo.bestPlatform === 'flipkart' && sourceInfo.savingsAmount > 0) {
+      flipkartSavings += sourceInfo.savingsAmount;
+      flipkartWins++;
+    } else if (sourceInfo.bestPlatform === 'amazon' && sourceInfo.savingsAmount > 0) {
+      amazonSavings += sourceInfo.savingsAmount;
+      amazonWins++;
+    }
+  });
+
+  return {
+    flipkartSavings,
+    amazonSavings,
+    flipkartWins,
+    amazonWins,
+    totalSavings: flipkartSavings + amazonSavings
+  };
+};
+
+// Get platform distribution
+export const getPlatformDistribution = (records: ProductRecord[]) => {
+  const distribution = {
+    flipkart: 0,
+    amazon: 0,
+    unknown: 0
+  };
+
+  records.forEach(record => {
+    const sourceInfo = parseSearchSource(record.search_source);
+    
+    if (sourceInfo.bestPlatform === 'flipkart') {
+      distribution.flipkart++;
+    } else if (sourceInfo.bestPlatform === 'amazon') {
+      distribution.amazon++;
+    } else {
+      distribution.unknown++;
+    }
+  });
+
+  return distribution;
+};
+
 export default {
   fetchQRScanData,
   fetchProductRecords,
   parseSearchSource,
   getFlipkartPrice,
+  getFlipkartPriceNumeric,
   getProductLink,
+  isInitialRequest,
   maskPhoneNumber,
   isRealUser,
   categorizeProduct,
   getDeviceAnalytics,
-  getDailyScanTrends
+  getDailyScanTrends,
+  calculatePlatformSavings,
+  getPlatformDistribution
 };
