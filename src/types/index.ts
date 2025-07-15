@@ -1,5 +1,7 @@
 // src/types/index.ts - Updated Types for Actual API Integration
 export interface FilterOptions {
+  userSegment: string;
+  productCategory: string;
   dateRange: {
     start: string;
     end: string;

@@ -384,7 +384,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
           icon={Monitor}
           color="purple"
         />
-        <StatsCard
+        {/* <StatsCard
           title="Success Rate"
           value={`${realTimeStats.successRate}%`}
           icon={Target}
@@ -395,7 +395,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
           value={realTimeStats.errorCount}
           icon={AlertCircle}
           color="red"
-        />
+        /> */}
       </div>
 
       {/* Enhanced Platform Performance Cards with Clickable Savings */}
@@ -616,12 +616,12 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({ stats, onRefreshQ
             </p>
           </div>
           
-          <div className="bg-purple-50 rounded-lg p-4">
+          {/* <div className="bg-purple-50 rounded-lg p-4">
             <h4 className="font-medium text-purple-900 mb-2">Success Rate</h4>
             <p className="text-sm text-purple-700">
               {realTimeStats.successRate}% success rate with {realTimeStats.errorCount} errors
             </p>
-          </div>
+          </div> */}
         </div>
       </div>
 

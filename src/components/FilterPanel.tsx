@@ -18,10 +18,9 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ filters, onFiltersChange }) =
         start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         end: new Date().toISOString().split('T')[0],
       },
-      userSegment: undefined,
-      productCategory: undefined,
+      userSegment: "",
+      productCategory: "",
       brand: undefined,
-      source: undefined,
     });
   };
 
