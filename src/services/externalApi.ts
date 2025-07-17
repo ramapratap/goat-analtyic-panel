@@ -384,7 +384,13 @@ export const categorizeProduct = (category: string, productName: string): string
   
   if (name.includes('mobile') || name.includes('phone') || name.includes('iphone') || name.includes('samsung')) {
     return 'Mobile';
-  }
+    'Mobile': ['phone', 'mobile', 'iphone', 'samsung', 'smartphone'],
+    'Laptop': ['laptop', 'computer', 'pc', 'macbook'],
+    'Television': ['tv', 'television', 'smart tv'],
+    'Audio': ['headphone', 'speaker', 'earphone', 'audio', 'headset'],
+    'Camera': ['camera', 'dslr', 'lens'],
+    'Watch': ['watch', 'smartwatch'],
+    'Tablet': ['tablet', 'ipad'],
   if (name.includes('laptop') || name.includes('computer') || name.includes('pc')) {
     return 'Laptop';
   }
@@ -410,7 +416,7 @@ export const categorizeProduct = (category: string, productName: string): string
     return 'Clothing';
   }
   
-  return 'Electronics';
+  return 'Other';
 };
 
 // Get device analytics from QR data
