@@ -391,6 +391,7 @@ export const categorizeProduct = (category: string, productName: string): string
     'Camera': ['camera', 'dslr', 'lens'],
     'Watch': ['watch', 'smartwatch'],
     'Tablet': ['tablet', 'ipad'],
+  }
   if (name.includes('laptop') || name.includes('computer') || name.includes('pc')) {
     return 'Laptop';
   }
